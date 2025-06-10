@@ -103,6 +103,13 @@ export function AppBar() {
                 open={Boolean(anchorEl)}
                 onClose={handleClose}
               >
+                <MenuItem 
+                  component={RouterLink} 
+                  to="/profile"
+                  onClick={handleClose}
+                >
+                  Profile
+                </MenuItem>
                 <MenuItem onClick={handleSignOut}>Sign Out</MenuItem>
               </Menu>
             </>

@@ -1,17 +1,23 @@
 export interface Cocktail {
   id: string;
   name: string;
-  description: string;
-  image_url: string;
+  description: string | null;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
+  ingredients?: CocktailIngredient[];
+  cost?: number;
 }
 
 export interface Ingredient {
   id: string;
   name: string;
-  price: number;
-  image_url: string;
+  link: string | null;
+  price: number | null;
+  bottle_size: string;
+  price_per_ounce: number | null;
+  image_url: string | null;
+  type: string;
   created_at: string;
   updated_at: string;
 }
@@ -24,4 +30,5 @@ export interface CocktailIngredient {
   unit: string;
   created_at: string;
   updated_at: string;
+  ingredient?: Ingredient;
 } 

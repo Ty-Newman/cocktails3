@@ -10,13 +10,15 @@ import {
   Container,
   Button,
   Snackbar,
-  Alert
+  Alert,
+  Chip,
 } from '@mui/material';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import { getSupabaseClient } from '../services/supabase';
 import { searchCocktailByName } from '../services/cocktailDB';
 import { useCart } from '../contexts/CartContext';
 import type { Cocktail, IngredientType, BottleSize } from '../types/supabase';
+import { FavoriteButton } from '../components/FavoriteButton';
 
 // Add the bottle size to ml mapping
 const bottleSizeToMl: Record<BottleSize, number> = {
@@ -185,59 +187,125 @@ export function FeaturedCocktails() {
     fetchCocktails();
   }, []);
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Typography color="error">{error}</Typography>
-      </Box>
-    );
-  }
-
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Grid container spacing={3}>
-        {cocktails.map((cocktail) => (
-          <Grid item xs={12} sm={6} md={4} key={cocktail.id}>
-            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <CardMedia
-                component="img"
-                height="200"
-                image={cocktail.image_url || '/cocktail-placeholder.jpg'}
-                alt={cocktail.name}
-                sx={{ objectFit: 'cover' }}
-              />
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography gutterBottom variant="h5" component="h2">
-                  {cocktail.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  {cocktail.description}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Cost: ${isNaN(cocktail.cost) ? '0.00' : cocktail.cost.toFixed(2)}
-                </Typography>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddShoppingCartIcon />}
-                  onClick={() => handleAddToCart(cocktail)}
-                  fullWidth
-                >
-                  Add to Cart
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+          <Typography color="error">{error}</Typography>
+        </Box>
+      ) : (
+        <Grid container spacing={3}>
+          {cocktails.map((cocktail) => (
+            <Grid item xs={12} sm={6} md={4} key={cocktail.id}>
+              <Card sx={{ 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  transition: 'transform 0.2s ease-in-out',
+                  boxShadow: 3
+                }
+              }}>
+                <CardMedia
+                  component="img"
+                  height="200"
+                  image={cocktail.image_url || 'https://placehold.co/400x200/1a1a1a/ffffff?text=No+Image'}
+                  alt={cocktail.name}
+                  sx={{
+                    objectFit: 'cover',
+                    backgroundColor: 'grey.900'
+                  }}
+                />
+                <CardContent sx={{ 
+                  flexGrow: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  '&:last-child': { pb: 2 }
+                }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="h6" noWrap>
+                      {cocktail.name}
+                    </Typography>
+                    <FavoriteButton cocktailId={cocktail.id} size="small" />
+                  </Box>
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary" 
+                    sx={{ 
+                      mb: 2,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      minHeight: '2.5em'
+                    }}
+                  >
+                    {cocktail.description}
+                  </Typography>
+                  <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
+                    Estimated Cost: ${cocktail.cost?.toFixed(2)}
+                  </Typography>
+                  <Box sx={{ 
+                    mt: 1, 
+                    mb: 2,
+                    flexGrow: 1,
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Ingredients:
+                    </Typography>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap', 
+                      gap: 0.5,
+                      maxHeight: '100px',
+                      overflowY: 'auto',
+                      '&::-webkit-scrollbar': {
+                        width: '4px',
+                      },
+                      '&::-webkit-scrollbar-track': {
+                        background: '#f1f1f1',
+                        borderRadius: '4px',
+                      },
+                      '&::-webkit-scrollbar-thumb': {
+                        background: '#888',
+                        borderRadius: '4px',
+                      },
+                    }}>
+                      {cocktail.cocktail_ingredients?.map((ci) => (
+                        <Chip
+                          key={ci.id}
+                          label={`${ci.amount} ${ci.unit} ${ci.ingredients?.name}`}
+                          size="small"
+                          variant="outlined"
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<AddShoppingCartIcon />}
+                    onClick={() => handleAddToCart(cocktail)}
+                    fullWidth
+                    sx={{ mt: 'auto' }}
+                  >
+                    Add to Cart
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}

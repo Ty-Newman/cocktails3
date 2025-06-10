@@ -14,7 +14,9 @@ import { UsersPage } from './pages/admin/UsersPage';
 import { SupabaseProvider } from './contexts/SupabaseContext';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { CartProvider } from './contexts/CartContext';
+import { FavoritesProvider } from './contexts/FavoritesContext';
 import { CartPage } from './pages/CartPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { AppBar } from './components/layout/AppBar';
 
 const theme = createTheme({
@@ -51,6 +53,7 @@ function AppContent() {
           <Route path="/" element={<HomePage />} />
           <Route path="/cocktails" element={<CocktailsList />} />
           <Route path="/cart" element={<CartPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route
             path="/admin"
             element={
@@ -78,9 +81,11 @@ function App() {
       <AuthProvider>
         <SupabaseProvider>
           <CartProvider>
-            <Router>
-              <AppContent />
-            </Router>
+            <FavoritesProvider>
+              <Router>
+                <AppContent />
+              </Router>
+            </FavoritesProvider>
           </CartProvider>
         </SupabaseProvider>
       </AuthProvider>
