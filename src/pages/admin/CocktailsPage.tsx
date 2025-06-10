@@ -26,11 +26,17 @@ import {
   AccordionSummary,
   AccordionDetails,
   Container,
+  Switch,
+  FormControlLabel,
+  InputAdornment,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Search as SearchIcon } from '@mui/icons-material';
 import { supabase } from '../../services/supabase';
 import type { Ingredient, IngredientType } from '../../types/supabase';
 
@@ -54,6 +60,7 @@ interface Cocktail {
   cocktail_ingredients: CocktailIngredient[];
   created_at: string;
   updated_at: string;
+  is_featured: boolean;
 }
 
 interface FormIngredient extends CocktailIngredient {
@@ -137,6 +144,16 @@ export function CocktailsPage() {
     ingredients: [] as FormIngredient[],
   });
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error';
+  }>({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   // Load saved state from sessionStorage on mount
   useEffect(() => {
@@ -369,6 +386,34 @@ export function CocktailsPage() {
     fetchCocktails();
   };
 
+  const handleToggleFeatured = async (id: string, isFeatured: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('cocktails')
+        .update({ is_featured: isFeatured })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setCocktails(cocktails.map(cocktail =>
+        cocktail.id === id ? { ...cocktail, is_featured: isFeatured } : cocktail
+      ));
+
+      setSnackbar({
+        open: true,
+        message: `Cocktail ${isFeatured ? 'featured' : 'unfeatured'} successfully`,
+        severity: 'success'
+      });
+    } catch (err) {
+      console.error('Error updating featured status:', err);
+      setSnackbar({
+        open: true,
+        message: 'Error updating featured status',
+        severity: 'error'
+      });
+    }
+  };
+
   // Group ingredients by type
   const groupedIngredients = ingredients.reduce((acc, ingredient) => {
     const type = ingredient.type || 'other';
@@ -379,21 +424,45 @@ export function CocktailsPage() {
     return acc;
   }, {} as Record<string, Ingredient[]>);
 
+  const filteredCocktails = cocktails.filter(cocktail =>
+    cocktail.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cocktail.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cocktail.cocktail_ingredients?.some(ci => 
+      ci.ingredients?.name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" component="h1">
           Cocktails
         </Typography>
         <Button
           variant="contained"
           color="primary"
           startIcon={<AddIcon />}
-          onClick={() => handleOpen()}
+          onClick={() => setOpen(true)}
         >
           Add Cocktail
         </Button>
       </Box>
+
+      <TextField
+        fullWidth
+        variant="outlined"
+        placeholder="Search cocktails by name, description, or ingredients..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon />
+            </InputAdornment>
+          ),
+        }}
+        sx={{ mb: 3 }}
+      />
 
       <Paper sx={{ width: '100%', overflow: 'hidden' }}>
         <TableContainer sx={{ maxHeight: 440 }}>
@@ -401,20 +470,22 @@ export function CocktailsPage() {
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
+                <TableCell>Description</TableCell>
                 <TableCell>Ingredients</TableCell>
-                <TableCell>Price</TableCell>
+                <TableCell>Cost</TableCell>
+                <TableCell>Featured</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {cocktails.map((cocktail) => (
+              {filteredCocktails.map((cocktail) => (
                 <TableRow key={cocktail.id}>
                   <TableCell>{cocktail.name}</TableCell>
+                  <TableCell>{cocktail.description}</TableCell>
                   <TableCell>
-                    {cocktail.cocktail_ingredients?.map((ingredient, index) => (
-                      <Typography key={index} variant="body2">
-                        {ingredient.amount} {ingredient.unit} {ingredient.ingredients.name}
-                        {index < (cocktail.cocktail_ingredients?.length || 0) - 1 ? ', ' : ''}
+                    {cocktail.cocktail_ingredients?.map((ci, index) => (
+                      <Typography key={index}>
+                        {ci.amount} {ci.unit} {ci.ingredients?.name}
                       </Typography>
                     ))}
                   </TableCell>
@@ -424,18 +495,26 @@ export function CocktailsPage() {
                       : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
                   </TableCell>
                   <TableCell>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={cocktail.is_featured}
+                          onChange={(e) => handleToggleFeatured(cocktail.id, e.target.checked)}
+                        />
+                      }
+                      label={cocktail.is_featured ? 'Featured' : 'Not Featured'}
+                    />
+                  </TableCell>
+                  <TableCell>
                     <IconButton
-                      size="small"
-                      onClick={() => handleOpen(cocktail)}
-                      color="primary"
+                      onClick={() => {
+                        setEditingCocktail(cocktail);
+                        setOpen(true);
+                      }}
                     >
                       <EditIcon />
                     </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDelete(cocktail.id)}
-                      color="error"
-                    >
+                    <IconButton onClick={() => handleDelete(cocktail.id)}>
                       <DeleteIcon />
                     </IconButton>
                   </TableCell>

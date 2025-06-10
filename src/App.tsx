@@ -6,7 +6,8 @@ import { AuthCallback } from './pages/AuthCallback';
 import { AdminRoute } from './components/AdminRoute';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { IngredientsPage } from './pages/admin/IngredientsPage';
-import FeaturedCocktails from './components/FeaturedCocktails';
+import { HomePage } from './pages/HomePage';
+import { CocktailsList } from './pages/CocktailsList';
 import { CocktailsPage } from './pages/admin/CocktailsPage';
 import { OrdersPage } from './pages/admin/OrdersPage';
 import { UsersPage } from './pages/admin/UsersPage';
@@ -41,9 +42,12 @@ function AppContent() {
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component={Link} to="/" sx={{ flexGrow: 1, textDecoration: 'none', color: 'inherit' }}>
             Cocktail App
           </Typography>
+          <Button color="inherit" component={Link} to="/cocktails" sx={{ mr: 2 }}>
+            All Cocktails
+          </Button>
           {isAdmin && (
             <Button color="inherit" component={Link} to="/admin" sx={{ mr: 2 }}>
               Admin
@@ -64,7 +68,8 @@ function AppContent() {
         <Routes>
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-          <Route path="/" element={<FeaturedCocktails />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/cocktails" element={<CocktailsList />} />
           <Route
             path="/admin"
             element={
