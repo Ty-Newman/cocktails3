@@ -1,5 +1,7 @@
 export type UserRole = 'user' | 'admin';
 
+export type BottleSize = '50ml' | '200ml' | '375ml' | '500ml' | '750ml' | '1L' | '1.75L';
+
 export type IngredientType = 
   | 'whiskey'
   | 'vodka'
@@ -34,7 +36,9 @@ export interface Cocktail {
 export interface Ingredient {
   id: string;
   name: string;
-  price: number;
+  price: number | null;
+  bottle_size: BottleSize;
+  price_per_ounce: number | null;
   link: string | null;
   image_url: string | null;
   type: IngredientType | null;

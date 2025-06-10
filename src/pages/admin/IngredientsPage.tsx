@@ -25,16 +25,35 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { supabase } from '../../services/supabase';
-import type { IngredientType } from '../../types/supabase';
+import type { IngredientType, BottleSize } from '../../types/supabase';
 
 interface Ingredient {
   id: string;
   name: string;
   price: number | null;
+  bottle_size: BottleSize;
+  price_per_ounce: number | null;
   link: string | null;
   image_url: string | null;
   type: IngredientType | null;
 }
+
+// Bottle size to ml conversion
+const bottleSizeToMl: Record<BottleSize, number> = {
+  '50ml': 50,
+  '200ml': 200,
+  '375ml': 375,
+  '500ml': 500,
+  '750ml': 750,
+  '1L': 1000,
+  '1.75L': 1750
+};
+
+// Calculate price per ounce (1 oz = 29.5735 ml)
+const calculatePricePerOunce = (price: number, bottleSize: BottleSize): number => {
+  const ml = bottleSizeToMl[bottleSize];
+  return (price / ml) * 29.5735;
+};
 
 export function IngredientsPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -43,6 +62,7 @@ export function IngredientsPage() {
   const [formData, setFormData] = useState({
     name: '',
     price: '',
+    bottle_size: '750ml' as BottleSize,
     link: '',
     image_url: '',
     type: '',
@@ -102,6 +122,7 @@ export function IngredientsPage() {
       setFormData({
         name: ingredient.name,
         price: ingredient.price?.toString() || '',
+        bottle_size: ingredient.bottle_size,
         link: ingredient.link || '',
         image_url: ingredient.image_url || '',
         type: ingredient.type || '',
@@ -111,6 +132,7 @@ export function IngredientsPage() {
       setFormData({
         name: '',
         price: '',
+        bottle_size: '750ml',
         link: '',
         image_url: '',
         type: '',
@@ -127,9 +149,14 @@ export function IngredientsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const price = formData.price ? parseFloat(formData.price) : null;
+    const pricePerOunce = price ? calculatePricePerOunce(price, formData.bottle_size) : null;
+
     const ingredientData = {
       name: formData.name,
-      price: formData.price ? parseFloat(formData.price) : null,
+      price,
+      bottle_size: formData.bottle_size,
+      price_per_ounce: pricePerOunce,
       link: formData.link || null,
       image_url: formData.image_url || null,
       type: formData.type || null,
@@ -178,6 +205,16 @@ export function IngredientsPage() {
     fetchIngredients();
   };
 
+  const truncateLink = (link: string | null) => {
+    if (!link) return '';
+    try {
+      const url = new URL(link);
+      return url.hostname + (url.pathname.length > 20 ? '...' : url.pathname);
+    } catch {
+      return link.length > 30 ? link.substring(0, 30) + '...' : link;
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -209,9 +246,16 @@ export function IngredientsPage() {
                 <TableCell>{ingredient.type}</TableCell>
                 <TableCell>${ingredient.price?.toFixed(2)}</TableCell>
                 <TableCell>
-                  <a href={ingredient.link || '#'} target="_blank" rel="noopener noreferrer">
-                    {ingredient.link}
-                  </a>
+                  {ingredient.link && (
+                    <a 
+                      href={ingredient.link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      title={ingredient.link}
+                    >
+                      {truncateLink(ingredient.link)}
+                    </a>
+                  )}
                 </TableCell>
                 <TableCell>
                   <IconButton onClick={() => handleOpen(ingredient)}>
@@ -246,7 +290,7 @@ export function IngredientsPage() {
                 <Select
                   value={formData.type}
                   label="Type"
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as IngredientType })}
                 >
                   <MenuItem value="">None</MenuItem>
                   <MenuItem value="whiskey">Whiskey</MenuItem>
@@ -264,13 +308,37 @@ export function IngredientsPage() {
                   <MenuItem value="other">Other</MenuItem>
                 </Select>
               </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Bottle Size</InputLabel>
+                <Select
+                  value={formData.bottle_size}
+                  label="Bottle Size"
+                  onChange={(e) => setFormData({ ...formData, bottle_size: e.target.value as BottleSize })}
+                >
+                  <MenuItem value="50ml">50ml (Mini)</MenuItem>
+                  <MenuItem value="200ml">200ml (Airplane)</MenuItem>
+                  <MenuItem value="375ml">375ml (Half)</MenuItem>
+                  <MenuItem value="500ml">500ml</MenuItem>
+                  <MenuItem value="750ml">750ml (Standard)</MenuItem>
+                  <MenuItem value="1L">1L</MenuItem>
+                  <MenuItem value="1.75L">1.75L (Handle)</MenuItem>
+                </Select>
+              </FormControl>
               <TextField
                 label="Price"
                 type="number"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                InputProps={{
+                  startAdornment: <Typography>$</Typography>,
+                }}
                 fullWidth
               />
+              {formData.price && formData.bottle_size && (
+                <Typography variant="body2" color="text.secondary">
+                  Price per ounce: ${calculatePricePerOunce(parseFloat(formData.price), formData.bottle_size).toFixed(2)}
+                </Typography>
+              )}
               <TextField
                 label="Link"
                 value={formData.link}
@@ -287,9 +355,7 @@ export function IngredientsPage() {
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClose}>Cancel</Button>
-            <Button type="submit" variant="contained">
-              {editingIngredient ? 'Update' : 'Create'}
-            </Button>
+            <Button type="submit" variant="contained">Save</Button>
           </DialogActions>
         </form>
       </Dialog>

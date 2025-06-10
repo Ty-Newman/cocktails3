@@ -21,6 +21,17 @@ create type ingredient_type as enum (
     'syrup'
 );
 
+-- Create enum for bottle sizes
+create type bottle_size as enum (
+    '50ml',
+    '200ml',
+    '375ml',
+    '500ml',
+    '750ml',
+    '1L',
+    '1.75L'
+);
+
 -- Create users table (extends Supabase auth.users)
 create table public.profiles (
     id uuid references auth.users on delete cascade not null primary key,
@@ -35,6 +46,8 @@ create table public.ingredients (
     name text not null unique,
     link text,
     price decimal(10,2),
+    bottle_size bottle_size default '750ml',
+    price_per_ounce decimal(10,2),
     image_url text,
     type ingredient_type,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,

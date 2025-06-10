@@ -1,13 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import type { Session, User } from '@supabase/auth-helpers-react';
-import { supabase, initializeAuth } from '../services/supabase';
-
-type UserRole = 'user' | 'admin';
-
-interface Profile {
-  id: string;
-  role: UserRole;
-}
+import { getSupabaseClient, getSupabaseClientSync } from '../services/supabase';
+import type { Session, User } from '@supabase/supabase-js';
+import type { Profile } from '../types/supabase';
 
 interface AuthContextType {
   session: Session | null;
@@ -15,8 +9,7 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signInWithDiscord: () => Promise<void>;
+  signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -28,237 +21,122 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Initialize auth state
-    const setupAuth = async () => {
-      console.log('Setting up auth state...');
-      setLoading(true);
-
-      try {
-        // Get initial session with a timeout
-        const result = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<{ data: { session: null }, error: null }>((_, reject) => 
-            setTimeout(() => reject(new Error('Session check timeout')), 5000)
-          )
-        ]);
-        
-        const { data: { session }, error: sessionError } = result;
-        
-        if (sessionError) {
-          console.error('Error getting initial session:', sessionError);
-          throw sessionError;
-        }
-
-        console.log('Initial session check:', {
-          hasSession: !!session,
-          userId: session?.user?.id,
-          accessToken: session?.access_token ? 'present' : 'missing'
-        });
-
-        if (session?.user) {
-          setSession(session);
-          setUser(session.user);
-          
-          // Wait for profile fetch to complete
-          await fetchProfile(session.user.id);
-        } else {
-          console.log('No initial session found');
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-        }
-      } catch (error: any) {
-        console.error('Error in setupAuth:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        // Reset state on error
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    setupAuth();
-
-    let timeoutId: NodeJS.Timeout;
-    
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[AuthContext] Tab became visible, re-checking session/profile...');
-        // Clear any existing timeout
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        // Debounce the setupAuth call
-        timeoutId = setTimeout(() => {
-          setupAuth();
-        }, 100);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, []);
-
   const fetchProfile = async (userId: string) => {
-    console.log('Starting profile fetch for user:', userId);
-    setLoading(true);
-
+    const supabase = await getSupabaseClient();
     try {
-      // Get current session to ensure we have the latest auth token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('Error getting session for profile fetch:', sessionError);
-        throw sessionError;
-      }
-
-      if (!session) {
-        console.error('No session found for profile fetch');
-        throw new Error('No session found');
-      }
-
-      if (!session.access_token) {
-        console.error('No access token in session');
-        throw new Error('No access token');
-      }
-
-      console.log('Making profile query with session:', {
-        hasSession: true,
-        accessToken: 'present',
-        userId: session.user.id,
-        headers: {
-          authorization: 'Bearer [REDACTED]'
-        }
-      });
-
-      // Log the actual query we're about to make
-      console.log('Executing profile query:', {
-        table: 'profiles',
-        select: '*',
-        filter: { id: userId }
-      });
-
+      console.log('Fetching profile for user:', userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle();
-
-      console.log('Profile fetch response:', { 
-        hasData: !!data, 
-        error: error?.message,
-        data: data ? { id: data.id, role: data.role } : null,
-        status: error ? 'error' : 'success'
-      });
+        .single();
 
       if (error) {
-        console.error('Error fetching profile:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        throw error;
+        console.error('Error fetching profile:', error);
+        return null;
       }
 
-      if (!data) {
-        console.log('No profile found, creating new profile...');
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: userId,
-              role: 'user',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }
-          ])
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Error creating profile:', createError);
-          throw createError;
-        }
-
-        console.log('Successfully created new profile:', newProfile);
-        setProfile(newProfile);
-      } else {
-        console.log('Found existing profile:', data);
-        setProfile(data);
-      }
-    } catch (error: any) {
-      console.error('Error in fetchProfile:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        stack: error.stack
-      });
-    } finally {
-      setLoading(false);
+      console.log('Profile fetched:', data);
+      return data as unknown as Profile;
+    } catch (error) {
+      console.error('Error in fetchProfile:', error);
+      return null;
     }
   };
 
-  const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  };
+  useEffect(() => {
+    let mounted = true;
+    console.log('Setting up auth...');
 
-  const signInWithDiscord = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'discord',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    const setupAuth = async () => {
+      try {
+        const supabase = await getSupabaseClient();
+        
+        // Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('Initial session check:', { hasSession: !!session, error });
+        
+        if (!mounted) return;
+
+        if (error) {
+          console.error('Error getting session:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (session) {
+          setSession(session);
+          setUser(session.user);
+          const profile = await fetchProfile(session.user.id);
+          if (mounted) {
+            setProfile(profile);
+          }
+        }
+        if (mounted) {
+          setLoading(false);
+        }
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log('Auth state changed:', { event, hasSession: !!session });
+          if (!mounted) return;
+
+          setSession(session);
+          setUser(session?.user ?? null);
+          
+          if (session?.user) {
+            const profile = await fetchProfile(session.user.id);
+            if (mounted) {
+              setProfile(profile);
+            }
+          } else {
+            setProfile(null);
+          }
+          
+          if (mounted) {
+            setLoading(false);
+          }
+        });
+
+        return () => {
+          mounted = false;
+          subscription.unsubscribe();
+        };
+      } catch (error) {
+        console.error('Error in setupAuth:', error);
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    setupAuth();
+  }, []);
+
+  const signIn = async () => {
+    const supabase = await getSupabaseClient();
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error signing in:', error);
+      throw error;
+    }
   };
 
   const signOut = async () => {
-    console.log('Sign out initiated');
+    const supabase = await getSupabaseClient();
     try {
-      console.log('Current session before sign out:', {
-        hasSession: !!session,
-        hasUser: !!user,
-        hasProfile: !!profile
-      });
-      
       const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error('Error signing out:', {
-          message: error.message,
-          code: error.code
-        });
-      } else {
-        console.log('Successfully signed out');
-        // Force clear local state
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-      }
-    } catch (error: any) {
-      console.error('Unexpected error during sign out:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack
-      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
     }
   };
 
@@ -268,20 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile,
     loading,
     isAdmin: profile?.role === 'admin',
-    signInWithGoogle,
-    signInWithDiscord,
-    signOut,
+    signIn,
+    signOut
   };
 
-  console.log('Current auth state:', {
-    session: !!session,
-    user: !!user,
-    profile,
-    loading,
-    isAdmin: profile?.role === 'admin'
-  });
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
