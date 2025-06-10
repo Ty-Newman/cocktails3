@@ -18,7 +18,9 @@ create type ingredient_type as enum (
     'mixer',
     'garnish',
     'other',
-    'syrup'
+    'syrup',
+    'bitters',
+    'juice'
 );
 
 -- Create enum for bottle sizes

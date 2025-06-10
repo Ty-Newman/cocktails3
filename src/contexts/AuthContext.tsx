@@ -9,7 +9,8 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
-  signIn: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithDiscord: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -23,6 +24,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     const supabase = await getSupabaseClient();
+    if (!supabase) {
+      console.error('Supabase client is not available');
+      return null;
+    }
+
     try {
       console.log('Fetching profile for user:', userId);
       const { data, error } = await supabase
@@ -51,6 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const setupAuth = async () => {
       try {
         const supabase = await getSupabaseClient();
+        if (!supabase) {
+          console.error('Supabase client is not available');
+          setLoading(false);
+          return;
+        }
         
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -113,8 +124,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setupAuth();
   }, []);
 
-  const signIn = async () => {
+  const signInWithGoogle = async () => {
     const supabase = await getSupabaseClient();
+    if (!supabase) {
+      throw new Error('Supabase client is not available');
+    }
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -124,13 +139,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
     } catch (error) {
-      console.error('Error signing in:', error);
+      console.error('Error signing in with Google:', error);
+      throw error;
+    }
+  };
+
+  const signInWithDiscord = async () => {
+    const supabase = await getSupabaseClient();
+    if (!supabase) {
+      throw new Error('Supabase client is not available');
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'discord',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error signing in with Discord:', error);
       throw error;
     }
   };
 
   const signOut = async () => {
     const supabase = await getSupabaseClient();
+    if (!supabase) {
+      throw new Error('Supabase client is not available');
+    }
+
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
@@ -146,9 +185,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile,
     loading,
     isAdmin: profile?.role === 'admin',
-    signIn,
+    signInWithGoogle,
+    signInWithDiscord,
     signOut
   };
+
+  // Debug admin status
+  console.log('AuthContext state:', {
+    hasSession: !!session,
+    hasUser: !!user,
+    hasProfile: !!profile,
+    profileRole: profile?.role,
+    isAdmin: profile?.role === 'admin'
+  });
 
   return (
     <AuthContext.Provider value={value}>

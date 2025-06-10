@@ -10,6 +10,8 @@ import FeaturedCocktails from './components/FeaturedCocktails';
 import { CocktailsPage } from './pages/admin/CocktailsPage';
 import { OrdersPage } from './pages/admin/OrdersPage';
 import { UsersPage } from './pages/admin/UsersPage';
+import { SupabaseProvider } from './contexts/SupabaseContext';
+import { AdminLayout } from './components/layout/AdminLayout';
 
 const theme = createTheme({
   palette: {
@@ -67,7 +69,7 @@ function AppContent() {
             path="/admin"
             element={
               <AdminRoute>
-                <AdminDashboard />
+                <AdminLayout />
               </AdminRoute>
             }
           >
@@ -85,14 +87,16 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <SupabaseProvider>
         <AuthProvider>
-          <AppContent />
+          <Router>
+            <AppContent />
+          </Router>
         </AuthProvider>
-      </ThemeProvider>
-    </Router>
+      </SupabaseProvider>
+    </ThemeProvider>
   );
 }
 
