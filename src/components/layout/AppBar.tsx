@@ -5,10 +5,10 @@ import {
   Typography,
   Button,
   IconButton,
-  Badge,
   Box,
   Menu,
   MenuItem,
+  Badge,
 } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -17,7 +17,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 
 export function AppBar() {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { totalItems } = useCart();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -35,6 +35,8 @@ export function AppBar() {
     await signOut();
     navigate('/login');
   };
+
+  const isAdmin = user?.role === 'admin';
 
   return (
     <MuiAppBar position="static">
@@ -55,6 +57,14 @@ export function AppBar() {
         </Typography>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            color="inherit"
+            component={RouterLink}
+            to="/cocktails"
+          >
+            All Cocktails
+          </Button>
+
           <IconButton
             color="inherit"
             component={RouterLink}
@@ -125,7 +135,7 @@ export function AppBar() {
               <Button
                 color="inherit"
                 component={RouterLink}
-                to="/register"
+                to="/login"
               >
                 Register
               </Button>
