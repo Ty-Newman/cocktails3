@@ -48,6 +48,36 @@ export function IngredientsPage() {
     type: '',
   });
 
+  // Load saved state from sessionStorage on mount
+  useEffect(() => {
+    const savedState = sessionStorage.getItem('ingredientsPageState');
+    if (savedState) {
+      const { open: savedOpen, editingIngredient: savedEditing, formData: savedFormData } = JSON.parse(savedState);
+      if (savedOpen) {
+        setOpen(savedOpen);
+        setEditingIngredient(savedEditing);
+        setFormData(savedFormData);
+      }
+    }
+  }, []);
+
+  // Save state to sessionStorage when it changes
+  useEffect(() => {
+    const stateToSave = {
+      open,
+      editingIngredient,
+      formData
+    };
+    sessionStorage.setItem('ingredientsPageState', JSON.stringify(stateToSave));
+  }, [open, editingIngredient, formData]);
+
+  // Clear saved state when component unmounts
+  useEffect(() => {
+    return () => {
+      sessionStorage.removeItem('ingredientsPageState');
+    };
+  }, []);
+
   useEffect(() => {
     fetchIngredients();
   }, []);

@@ -1,21 +1,32 @@
 import { Box, Drawer, List, ListItem, ListItemIcon, ListItemText, AppBar, Toolbar, Typography, IconButton } from '@mui/material';
-import { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import LocalBarIcon from '@mui/icons-material/LocalBar';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
+import HomeIcon from '@mui/icons-material/Home';
+import { useAuth } from '../../contexts/AuthContext';
 
 const drawerWidth = 240;
 
 export function AdminDashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+
+  // Redirect if not admin
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate('/');
+    }
+  }, [isAdmin, navigate]);
 
   const menuItems = [
+    { text: 'Home', icon: <HomeIcon />, path: '/' },
     { text: 'Ingredients', icon: <InventoryIcon />, path: '/admin/ingredients' },
-    { text: 'Cocktails', icon: <LocalBarIcon />, path: '/admin/cocktails' },
     { text: 'Orders', icon: <ShoppingCartIcon />, path: '/admin/orders' },
     { text: 'Users', icon: <PeopleIcon />, path: '/admin/users' },
   ];
@@ -35,6 +46,7 @@ export function AdminDashboard() {
             component={Link}
             to={item.path}
             selected={location.pathname === item.path}
+            onClick={() => setMobileOpen(false)}
           >
             <ListItemIcon>{item.icon}</ListItemIcon>
             <ListItemText primary={item.text} />

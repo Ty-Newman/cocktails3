@@ -4,6 +4,23 @@ create extension if not exists "uuid-ossp";
 -- Create enum for user roles
 create type user_role as enum ('user', 'admin');
 
+-- Create enum for ingredient types
+create type ingredient_type as enum (
+    'whiskey',
+    'vodka',
+    'rum',
+    'gin',
+    'tequila',
+    'brandy',
+    'liqueur',
+    'wine',
+    'beer',
+    'mixer',
+    'garnish',
+    'other',
+    'syrup'
+);
+
 -- Create users table (extends Supabase auth.users)
 create table public.profiles (
     id uuid references auth.users on delete cascade not null primary key,
@@ -19,6 +36,7 @@ create table public.ingredients (
     link text,
     price decimal(10,2),
     image_url text,
+    type ingredient_type,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );

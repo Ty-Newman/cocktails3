@@ -9,39 +9,64 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 console.log('Initializing Supabase client with URL:', supabaseUrl);
 
+// Create the client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    storageKey: 'supabase.auth.token',
+    storage: {
+      getItem: (key) => {
+        console.log('Getting item from storage:', key);
+        const value = localStorage.getItem(key);
+        console.log('Storage value:', value ? 'present' : 'missing');
+        return value;
+      },
+      setItem: (key, value) => {
+        console.log('Setting item in storage:', key);
+        localStorage.setItem(key, value);
+      },
+      removeItem: (key) => {
+        console.log('Removing item from storage:', key);
+        localStorage.removeItem(key);
+      }
+    }
   },
   db: {
     schema: 'public'
   }
 });
 
-// Enhanced connection test
-console.log('Testing Supabase connection...');
-supabase.from('profiles').select('count').single()
-  .then(({ data, error }) => {
+// Initialize the client and check session
+const initializeSupabase = async () => {
+  try {
+    console.log('Initializing Supabase client...');
+    
+    // Check if we have a stored session
+    const storedSession = localStorage.getItem('supabase.auth.token');
+    console.log('Stored session:', storedSession ? 'present' : 'missing');
+    
+    // Get the current session
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
     if (error) {
-      console.error('Supabase connection test failed:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-    } else {
-      console.log('Supabase connection test successful:', {
-        data,
-        url: supabaseUrl,
-        hasAnonKey: !!supabaseAnonKey
-      });
+      console.error('Error getting initial session:', error);
+      return;
     }
-  })
-  .catch(error => {
-    console.error('Supabase connection test error:', {
-      message: error.message,
-      stack: error.stack
+    
+    console.log('Initial session state:', {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      accessToken: session?.access_token ? 'present' : 'missing'
     });
-  }); 
+    
+    return session;
+  } catch (error) {
+    console.error('Error initializing Supabase:', error);
+    return null;
+  }
+};
+
+// Export the initialization function
+export const initializeAuth = initializeSupabase; 

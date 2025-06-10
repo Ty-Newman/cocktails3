@@ -35,8 +35,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
 
       try {
-        // Get initial session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Get initial session with a timeout
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null }, error: null }>((_, reject) => 
+            setTimeout(() => reject(new Error('Session check timeout')), 5000)
+          )
+        ]);
+        
+        const { data: { session }, error: sessionError } = result;
         
         if (sessionError) {
           console.error('Error getting initial session:', sessionError);
@@ -52,6 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           setSession(session);
           setUser(session.user);
+          
+          // Wait for profile fetch to complete
           await fetchProfile(session.user.id);
         } else {
           console.log('No initial session found');
@@ -59,40 +68,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setProfile(null);
         }
-      } catch (error) {
-        console.error('Error in setupAuth:', error);
+      } catch (error: any) {
+        console.error('Error in setupAuth:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        // Reset state on error
         setSession(null);
         setUser(null);
         setProfile(null);
       } finally {
         setLoading(false);
       }
-
-      // Listen for auth changes
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        console.log('Auth state changed:', { 
-          event: _event,
-          hasSession: !!session,
-          userId: session?.user?.id
-        });
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
-        }
-        setLoading(false);
-      });
-
-      return () => subscription.unsubscribe();
     };
 
     setupAuth();
+
+    let timeoutId: NodeJS.Timeout;
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[AuthContext] Tab became visible, re-checking session/profile...');
+        // Clear any existing timeout
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        // Debounce the setupAuth call
+        timeoutId = setTimeout(() => {
+          setupAuth();
+        }, 100);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, []);
 
   const fetchProfile = async (userId: string) => {
