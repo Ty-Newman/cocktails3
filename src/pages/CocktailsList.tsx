@@ -9,11 +9,16 @@ import {
   CircularProgress,
   Container,
   TextField,
-  InputAdornment
+  InputAdornment,
+  Button,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { Search as SearchIcon } from '@mui/icons-material';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import { getSupabaseClient } from '../services/supabase';
 import { searchCocktailByName } from '../services/cocktailDB';
+import { useCart } from '../contexts/CartContext';
 import type { Cocktail, IngredientType, BottleSize } from '../types/supabase';
 
 // Add the bottle size to ml mapping
@@ -86,6 +91,31 @@ export function CocktailsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const { addToCart } = useCart();
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+  }>({
+    open: false,
+    message: ''
+  });
+
+  const handleAddToCart = (cocktail: Cocktail) => {
+    addToCart({
+      id: cocktail.id,
+      name: cocktail.name,
+      price: cocktail.cost || 0,
+      quantity: 1
+    });
+    setSnackbar({
+      open: true,
+      message: `${cocktail.name} added to cart!`
+    });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
 
   useEffect(() => {
     const fetchCocktails = async () => {
@@ -218,14 +248,33 @@ export function CocktailsList() {
                 <Typography variant="body2" color="text.secondary" paragraph>
                   {cocktail.description}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   Cost: ${isNaN(cocktail.cost) ? '0.00' : cocktail.cost.toFixed(2)}
                 </Typography>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddShoppingCartIcon />}
+                  onClick={() => handleAddToCart(cocktail)}
+                  fullWidth
+                >
+                  Add to Cart
+                </Button>
               </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity="success" sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 } 

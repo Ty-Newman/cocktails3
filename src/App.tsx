@@ -1,5 +1,5 @@
-import { ThemeProvider, createTheme, CssBaseline, AppBar, Toolbar, Typography, Container, Button } from '@mui/material';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { ThemeProvider, createTheme, CssBaseline, Container } from '@mui/material';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
 import { AuthCallback } from './pages/AuthCallback';
@@ -13,6 +13,9 @@ import { OrdersPage } from './pages/admin/OrdersPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { SupabaseProvider } from './contexts/SupabaseContext';
 import { AdminLayout } from './components/layout/AdminLayout';
+import { CartProvider } from './contexts/CartContext';
+import { CartPage } from './pages/CartPage';
+import { AppBar } from './components/layout/AppBar';
 
 const theme = createTheme({
   palette: {
@@ -34,42 +37,20 @@ const theme = createTheme({
 });
 
 function AppContent() {
-  const { user, loading, signOut, isAdmin } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
 
   console.log('AppContent render:', { user, loading, isAdmin });
 
   return (
     <>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component={Link} to="/" sx={{ flexGrow: 1, textDecoration: 'none', color: 'inherit' }}>
-            Cocktail App
-          </Typography>
-          <Button color="inherit" component={Link} to="/cocktails" sx={{ mr: 2 }}>
-            All Cocktails
-          </Button>
-          {isAdmin && (
-            <Button color="inherit" component={Link} to="/admin" sx={{ mr: 2 }}>
-              Admin
-            </Button>
-          )}
-          {user ? (
-            <Button color="inherit" onClick={signOut}>
-              Sign Out
-            </Button>
-          ) : (
-            <Button color="inherit" component={Link} to="/login">
-              Sign In
-            </Button>
-          )}
-        </Toolbar>
-      </AppBar>
+      <AppBar />
       <Container>
         <Routes>
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
           <Route path="/" element={<HomePage />} />
           <Route path="/cocktails" element={<CocktailsList />} />
+          <Route path="/cart" element={<CartPage />} />
           <Route
             path="/admin"
             element={
@@ -94,13 +75,15 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <SupabaseProvider>
-        <AuthProvider>
-          <Router>
-            <AppContent />
-          </Router>
-        </AuthProvider>
-      </SupabaseProvider>
+      <AuthProvider>
+        <SupabaseProvider>
+          <CartProvider>
+            <Router>
+              <AppContent />
+            </Router>
+          </CartProvider>
+        </SupabaseProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
