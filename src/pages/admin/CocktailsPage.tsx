@@ -25,6 +25,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Container,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -34,9 +35,15 @@ import { supabase } from '../../services/supabase';
 import type { Ingredient, IngredientType } from '../../types/supabase';
 
 interface CocktailIngredient {
-  ingredient_id: string;
+  id: string;
   amount: number;
   unit: string;
+  ingredients: {
+    id: string;
+    name: string;
+    price: number;
+    type: string;
+  };
 }
 
 interface Cocktail {
@@ -44,7 +51,7 @@ interface Cocktail {
   name: string;
   description: string | null;
   image_url: string | null;
-  ingredients: CocktailIngredient[];
+  cocktail_ingredients: CocktailIngredient[];
   created_at: string;
   updated_at: string;
 }
@@ -52,6 +59,71 @@ interface Cocktail {
 interface FormIngredient extends CocktailIngredient {
   ingredient: Ingredient;
 }
+
+// Add the bottle size to ml mapping
+const bottleSizeToMl: Record<BottleSize, number> = {
+  '50ml': 50,
+  '200ml': 200,
+  '375ml': 375,
+  '500ml': 500,
+  '750ml': 750,
+  '1L': 1000,
+  '1.75L': 1750
+};
+
+// Add the price calculation function
+const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize | null, type: IngredientType): number | null => {
+  if (price === null || bottleSize === null) return null;
+  
+  if (type === 'bitters') {
+    // Average bitters bottle has about 200 dashes
+    const dashesPerBottle = 200;
+    return price / dashesPerBottle;
+  }
+  
+  const mlInBottle = bottleSizeToMl[bottleSize];
+  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
+  return (price * mlPerOunce) / mlInBottle;
+};
+
+// Add function to calculate cocktail cost
+const calculateCocktailCost = (ingredients: CocktailIngredient[]): number => {
+  if (!ingredients || ingredients.length === 0) return 0;
+
+  return ingredients.reduce((total, ingredient) => {
+    if (!ingredient.ingredients || !ingredient.amount) return total;
+
+    const price = ingredient.ingredients.price;
+    if (price === null) return total;
+
+    const pricePerUnit = calculatePricePerOunce(
+      price,
+      ingredient.ingredients.bottle_size,
+      ingredient.ingredients.type
+    );
+
+    // For items without bottle size (garnishes, non-bottled items)
+    if (pricePerUnit === null) {
+      return total + (price * ingredient.amount);
+    }
+
+    // For bottled items, calculate based on amount and unit
+    const amount = ingredient.amount;
+    const unit = ingredient.unit.toLowerCase();
+    
+    if (unit === 'dash' && ingredient.ingredients.type === 'bitters') {
+      return total + (pricePerUnit * amount);
+    } else if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
+      return total + (pricePerUnit * amount);
+    } else if (unit === 'ml') {
+      // Convert ml to oz for calculation
+      const mlPerOunce = 29.5735;
+      return total + (pricePerUnit * (amount / mlPerOunce));
+    }
+
+    return total;
+  }, 0);
+};
 
 export function CocktailsPage() {
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
@@ -64,6 +136,7 @@ export function CocktailsPage() {
     image_url: '',
     ingredients: [] as FormIngredient[],
   });
+  const [error, setError] = useState<string | null>(null);
 
   // Load saved state from sessionStorage on mount
   useEffect(() => {
@@ -101,30 +174,33 @@ export function CocktailsPage() {
   }, []);
 
   const fetchCocktails = async () => {
-    const { data, error } = await supabase
-      .from('cocktails')
-      .select(`
-        *,
-        cocktail_ingredients (
-          id,
-          amount,
-          unit,
-          ingredients (
-            id,
-            name,
-            price,
-            type
+    if (!supabase) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('cocktails')
+        .select(`
+          *,
+          cocktail_ingredients (
+            amount,
+            unit,
+            ingredients (
+              id,
+              name,
+              price,
+              bottle_size,
+              type
+            )
           )
-        )
-      `)
-      .order('name');
+        `)
+        .order('name');
 
-    if (error) {
+      if (error) throw error;
+      setCocktails(data || []);
+    } catch (error) {
       console.error('Error fetching cocktails:', error);
-      return;
+      setError(error instanceof Error ? error.message : 'Error fetching cocktails');
     }
-
-    setCocktails(data || []);
   };
 
   const fetchIngredients = async () => {
@@ -148,9 +224,9 @@ export function CocktailsPage() {
         name: cocktail.name,
         description: cocktail.description || '',
         image_url: cocktail.image_url || '',
-        ingredients: cocktail.ingredients.map(ci => ({
+        ingredients: cocktail.cocktail_ingredients.map(ci => ({
           ...ci,
-          ingredient: ingredients.find(i => i.id === ci.ingredient_id)!
+          ingredient: ingredients.find(i => i.id === ci.ingredients.id)!
         })),
       });
     } else {
@@ -176,10 +252,16 @@ export function CocktailsPage() {
       ingredients: [
         ...prev.ingredients,
         {
-          ingredient_id: ingredient.id,
-          ingredient,
+          id: '',
           amount: 0,
-          unit: 'oz'
+          unit: 'oz',
+          ingredients: {
+            id: ingredient.id,
+            name: ingredient.name,
+            price: ingredient.price || 0,
+            type: ingredient.type || 'other',
+          },
+          ingredient,
         }
       ]
     }));
@@ -203,74 +285,70 @@ export function CocktailsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!supabase) return;
 
-    const cocktailData = {
-      name: formData.name,
-      description: formData.description || null,
-      image_url: formData.image_url || null,
-    };
+    try {
+      const cocktailData = {
+        name: formData.name,
+        description: formData.description,
+        image_url: formData.image_url || null
+      };
 
-    let cocktailId: string;
+      let cocktailId: number;
 
-    if (editingCocktail) {
-      // Update cocktail
-      const { error: cocktailError } = await supabase
-        .from('cocktails')
-        .update(cocktailData)
-        .eq('id', editingCocktail.id);
+      if (editingCocktail) {
+        // Update existing cocktail
+        const { data, error } = await supabase
+          .from('cocktails')
+          .update(cocktailData)
+          .eq('id', editingCocktail.id)
+          .select()
+          .single();
 
-      if (cocktailError) {
-        console.error('Error updating cocktail:', cocktailError);
-        return;
+        if (error) throw error;
+        cocktailId = editingCocktail.id;
+      } else {
+        // Create new cocktail
+        const { data, error } = await supabase
+          .from('cocktails')
+          .insert([cocktailData])
+          .select()
+          .single();
+
+        if (error) throw error;
+        cocktailId = data.id;
       }
 
-      cocktailId = editingCocktail.id;
+      // Delete existing ingredients if editing
+      if (editingCocktail) {
+        const { error: deleteError } = await supabase
+          .from('cocktail_ingredients')
+          .delete()
+          .eq('cocktail_id', cocktailId);
 
-      // Delete existing ingredients
-      const { error: deleteError } = await supabase
+        if (deleteError) throw deleteError;
+      }
+
+      // Insert new ingredients
+      const ingredientInserts = formData.ingredients.map(ing => ({
+        cocktail_id: cocktailId,
+        ingredient_id: ing.ingredient.id,
+        amount: ing.amount,
+        unit: ing.unit
+      }));
+
+      const { error: insertError } = await supabase
         .from('cocktail_ingredients')
-        .delete()
-        .eq('cocktail_id', editingCocktail.id);
+        .insert(ingredientInserts);
 
-      if (deleteError) {
-        console.error('Error deleting cocktail ingredients:', deleteError);
-        return;
-      }
-    } else {
-      // Create new cocktail
-      const { data: newCocktail, error: cocktailError } = await supabase
-        .from('cocktails')
-        .insert([cocktailData])
-        .select()
-        .single();
+      if (insertError) throw insertError;
 
-      if (cocktailError) {
-        console.error('Error creating cocktail:', cocktailError);
-        return;
-      }
-
-      cocktailId = newCocktail.id;
+      handleClose();
+      fetchCocktails();
+    } catch (error) {
+      console.error('Error saving cocktail:', error);
+      setError(error instanceof Error ? error.message : 'Error saving cocktail');
     }
-
-    // Add ingredients
-    const { error: ingredientsError } = await supabase
-      .from('cocktail_ingredients')
-      .insert(
-        formData.ingredients.map(ing => ({
-          cocktail_id: cocktailId,
-          ingredient_id: ing.ingredient_id,
-          amount: ing.amount,
-          unit: ing.unit
-        }))
-      );
-
-    if (ingredientsError) {
-      console.error('Error adding cocktail ingredients:', ingredientsError);
-      return;
-    }
-
-    handleClose();
-    fetchCocktails();
   };
 
   const handleDelete = async (id: string) => {
@@ -302,11 +380,14 @@ export function CocktailsPage() {
   }, {} as Record<string, Ingredient[]>);
 
   return (
-    <Box>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5">Manage Cocktails</Typography>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Cocktails
+        </Typography>
         <Button
           variant="contained"
+          color="primary"
           startIcon={<AddIcon />}
           onClick={() => handleOpen()}
         >
@@ -314,47 +395,56 @@ export function CocktailsPage() {
         </Button>
       </Box>
 
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Description</TableCell>
-              <TableCell>Ingredients</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {cocktails.map((cocktail) => (
-              <TableRow key={cocktail.id}>
-                <TableCell>{cocktail.name}</TableCell>
-                <TableCell>{cocktail.description}</TableCell>
-                <TableCell>
-                  {cocktail.ingredients.map((ing, index) => {
-                    const ingredient = ingredients.find(i => i.id === ing.ingredient_id);
-                    return ingredient ? (
-                      <Chip
-                        key={index}
-                        label={`${ingredient.name} (${ing.amount} ${ing.unit})`}
-                        size="small"
-                        sx={{ m: 0.5 }}
-                      />
-                    ) : null;
-                  })}
-                </TableCell>
-                <TableCell>
-                  <IconButton onClick={() => handleOpen(cocktail)}>
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleDelete(cocktail.id)}>
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
+      <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+        <TableContainer sx={{ maxHeight: 440 }}>
+          <Table stickyHeader aria-label="cocktails table">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Ingredients</TableCell>
+                <TableCell>Price</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {cocktails.map((cocktail) => (
+                <TableRow key={cocktail.id}>
+                  <TableCell>{cocktail.name}</TableCell>
+                  <TableCell>
+                    {cocktail.cocktail_ingredients?.map((ingredient, index) => (
+                      <Typography key={index} variant="body2">
+                        {ingredient.amount} {ingredient.unit} {ingredient.ingredients.name}
+                        {index < (cocktail.cocktail_ingredients?.length || 0) - 1 ? ', ' : ''}
+                      </Typography>
+                    ))}
+                  </TableCell>
+                  <TableCell>
+                    ${isNaN(calculateCocktailCost(cocktail.cocktail_ingredients || [])) 
+                      ? '0.00' 
+                      : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
+                  </TableCell>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleOpen(cocktail)}
+                      color="primary"
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(cocktail.id)}
+                      color="error"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
         <form onSubmit={handleSubmit}>
@@ -362,7 +452,7 @@ export function CocktailsPage() {
             {editingCocktail ? 'Edit Cocktail' : 'Add New Cocktail'}
           </DialogTitle>
           <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+            <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <TextField
                 label="Name"
                 value={formData.name}
@@ -387,25 +477,50 @@ export function CocktailsPage() {
               
               <Typography variant="h6" sx={{ mt: 2 }}>Ingredients</Typography>
               
-              {Object.entries(groupedIngredients).map(([type, typeIngredients]) => (
-                <Accordion key={type}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography>{type.charAt(0).toUpperCase() + type.slice(1)}</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {typeIngredients.map((ingredient) => (
-                        <Chip
-                          key={ingredient.id}
-                          label={`${ingredient.name} ($${ingredient.price?.toFixed(2)}/oz)`}
-                          onClick={() => handleAddIngredient(ingredient)}
-                          sx={{ m: 0.5 }}
-                        />
-                      ))}
-                    </Box>
-                  </AccordionDetails>
-                </Accordion>
-              ))}
+              <Autocomplete
+                options={ingredients}
+                getOptionLabel={(option) => `${option.name} (${option.type})`}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Search Ingredients"
+                    placeholder="Type to search..."
+                  />
+                )}
+                renderOption={(props, option) => {
+                  const pricePerUnit = calculatePricePerOunce(option.price, option.bottle_size, option.type);
+                  const unitLabel = option.type === 'bitters' ? 'dash' : 'oz';
+                  const priceDisplay = option.type === 'garnish' || (option.type === 'other' && !option.isBottled)
+                    ? `$${option.price?.toFixed(2)}/unit`
+                    : pricePerUnit !== null
+                      ? `$${pricePerUnit.toFixed(2)}/${unitLabel}`
+                      : `$${option.price?.toFixed(2)}/unit`;
+
+                  return (
+                    <li {...props}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                        <Typography>{option.name}</Typography>
+                        <Typography color="text.secondary">
+                          {option.type} • {priceDisplay}
+                        </Typography>
+                      </Box>
+                    </li>
+                  );
+                }}
+                onChange={(_, newValue) => {
+                  if (newValue) {
+                    handleAddIngredient(newValue);
+                  }
+                }}
+                filterOptions={(options, { inputValue }) => {
+                  const searchTerm = inputValue.toLowerCase();
+                  return options.filter(option => 
+                    option.name.toLowerCase().includes(searchTerm) ||
+                    option.type.toLowerCase().includes(searchTerm)
+                  );
+                }}
+                groupBy={(option) => option.type || 'other'}
+              />
 
               <Typography variant="subtitle1" sx={{ mt: 2 }}>Selected Ingredients</Typography>
               {formData.ingredients.map((ing, index) => (
@@ -444,6 +559,6 @@ export function CocktailsPage() {
           </DialogActions>
         </form>
       </Dialog>
-    </Box>
+    </Container>
   );
 } 

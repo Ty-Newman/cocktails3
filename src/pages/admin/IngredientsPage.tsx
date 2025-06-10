@@ -23,6 +23,8 @@ import {
   InputAdornment,
   FormControlLabel,
   Checkbox,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -48,6 +50,12 @@ interface FormData {
   bottle_size: BottleSize | null;
   link: string;
   isBottled: boolean;
+}
+
+interface SnackbarState {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'info' | 'warning';
 }
 
 // Bottle size to ml conversion
@@ -88,15 +96,20 @@ export function IngredientsPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [open, setOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
   const [formData, setFormData] = useState<FormData>({
     name: '',
-    type: null,
-    price: '',
-    bottle_size: null,
+    type: 'spirit',
+    price: 0,
+    bottle_size: '750ml',
     link: '',
     isBottled: true
   });
-  const [error, setError] = useState<string | null>(null);
 
   // Load saved state from sessionStorage on mount
   useEffect(() => {
@@ -149,24 +162,24 @@ export function IngredientsPage() {
   const handleOpen = (ingredient?: Ingredient) => {
     if (ingredient) {
       setEditingIngredient(ingredient);
+      // Calculate total price from price_per_ounce for display
+      const totalPrice = ingredient.price;
       setFormData({
         name: ingredient.name,
-        price: ingredient.price?.toString() || '',
+        type: ingredient.type,
+        price: totalPrice,
         bottle_size: ingredient.bottle_size,
         link: ingredient.link || '',
-        image_url: ingredient.image_url || '',
-        type: ingredient.type,
-        isBottled: true
+        isBottled: ingredient.type === 'juice' || ingredient.type === 'other' ? ingredient.bottle_size !== null : true
       });
     } else {
       setEditingIngredient(null);
       setFormData({
         name: '',
-        price: '',
-        bottle_size: null,
+        type: 'spirit',
+        price: 0,
+        bottle_size: '750ml',
         link: '',
-        image_url: '',
-        type: null,
         isBottled: true
       });
     }
@@ -227,20 +240,15 @@ export function IngredientsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const pricePerUnit = calculatePricePerUnit(
-        formData.price,
-        formData.bottle_size,
-        formData.type
-      );
+    if (!supabase) return;
 
+    try {
       const ingredientData = {
         name: formData.name,
         type: formData.type,
         price: formData.price,
-        bottle_size: formData.bottle_size,
-        price_per_ounce: pricePerUnit,
-        link: formData.link || null,
+        bottle_size: (formData.type === 'juice' || formData.type === 'other') && !formData.isBottled ? null : formData.bottle_size,
+        link: formData.link || null
       };
 
       if (editingIngredient) {
@@ -250,19 +258,21 @@ export function IngredientsPage() {
           .eq('id', editingIngredient.id);
 
         if (error) throw error;
+        setSnackbar({ open: true, message: 'Ingredient updated successfully', severity: 'success' });
       } else {
         const { error } = await supabase
           .from('ingredients')
           .insert([ingredientData]);
 
         if (error) throw error;
+        setSnackbar({ open: true, message: 'Ingredient added successfully', severity: 'success' });
       }
 
       handleClose();
       fetchIngredients();
     } catch (error) {
       console.error('Error saving ingredient:', error);
-      setError('Failed to save ingredient');
+      setError(error instanceof Error ? error.message : 'Error saving ingredient');
     }
   };
 
@@ -292,6 +302,10 @@ export function IngredientsPage() {
     } catch {
       return link.length > 30 ? link.substring(0, 30) + '...' : link;
     }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   return (
@@ -485,6 +499,17 @@ export function IngredientsPage() {
           </DialogActions>
         </form>
       </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 } 
