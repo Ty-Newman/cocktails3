@@ -1,3 +1,18 @@
+export type IngredientType =
+  | 'whiskey'
+  | 'vodka'
+  | 'rum'
+  | 'gin'
+  | 'tequila'
+  | 'brandy'
+  | 'liqueur'
+  | 'wine'
+  | 'beer'
+  | 'mixer'
+  | 'syrup'
+  | 'garnish'
+  | 'other';
+
 export interface Cocktail {
   id: string;
   name: string;
@@ -13,6 +28,7 @@ export interface Ingredient {
   price: number;
   link: string | null;
   image_url: string | null;
+  type: IngredientType | null;
   created_at: string;
   updated_at: string;
 }

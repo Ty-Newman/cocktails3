@@ -1,4 +1,11 @@
-import { ThemeProvider, createTheme, CssBaseline, AppBar, Toolbar, Typography, Container } from '@mui/material';
+import { ThemeProvider, createTheme, CssBaseline, AppBar, Toolbar, Typography, Container, Button } from '@mui/material';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Login } from './components/Login';
+import { AuthCallback } from './pages/AuthCallback';
+import { AdminRoute } from './components/AdminRoute';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { IngredientsPage } from './pages/admin/IngredientsPage';
 import FeaturedCocktails from './components/FeaturedCocktails';
 
 const theme = createTheme({
@@ -20,21 +27,66 @@ const theme = createTheme({
   },
 });
 
-function App() {
+function AppContent() {
+  const { user, loading, signOut, isAdmin } = useAuth();
+
+  console.log('AppContent render:', { user, loading, isAdmin });
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <>
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Cocktail App
           </Typography>
+          {isAdmin && (
+            <Button color="inherit" component={Link} to="/admin" sx={{ mr: 2 }}>
+              Admin
+            </Button>
+          )}
+          {user ? (
+            <Button color="inherit" onClick={signOut}>
+              Sign Out
+            </Button>
+          ) : (
+            <Button color="inherit" component={Link} to="/login">
+              Sign In
+            </Button>
+          )}
         </Toolbar>
       </AppBar>
       <Container>
-        <FeaturedCocktails />
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+          <Route path="/" element={<FeaturedCocktails />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
+          >
+            <Route index element={<Navigate to="ingredients" replace />} />
+            <Route path="ingredients" element={<IngredientsPage />} />
+          </Route>
+        </Routes>
       </Container>
-    </ThemeProvider>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ThemeProvider>
+    </Router>
   );
 }
 

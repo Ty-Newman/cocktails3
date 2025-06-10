@@ -20,15 +20,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Test the connection
-supabase.from('cocktails').select('count').single()
+// Enhanced connection test
+console.log('Testing Supabase connection...');
+supabase.from('profiles').select('count').single()
   .then(({ data, error }) => {
     if (error) {
-      console.error('Supabase connection test failed:', error);
+      console.error('Supabase connection test failed:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
     } else {
-      console.log('Supabase connection test successful. Cocktail count:', data);
+      console.log('Supabase connection test successful:', {
+        data,
+        url: supabaseUrl,
+        hasAnonKey: !!supabaseAnonKey
+      });
     }
   })
   .catch(error => {
-    console.error('Supabase connection test error:', error);
+    console.error('Supabase connection test error:', {
+      message: error.message,
+      stack: error.stack
+    });
   }); 
