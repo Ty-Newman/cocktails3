@@ -27,6 +27,7 @@ export function AdminDashboard() {
   const menuItems = [
     { text: 'Home', icon: <HomeIcon />, path: '/' },
     { text: 'Ingredients', icon: <InventoryIcon />, path: '/admin/ingredients' },
+    { text: 'Cocktails', icon: <LocalBarIcon />, path: '/admin/cocktails' },
     { text: 'Orders', icon: <ShoppingCartIcon />, path: '/admin/orders' },
     { text: 'Users', icon: <PeopleIcon />, path: '/admin/users' },
   ];

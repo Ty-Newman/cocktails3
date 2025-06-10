@@ -17,18 +17,35 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import { supabase } from '../services/supabase';
 import { searchCocktailByName } from '../services/cocktailDB';
-import type { Cocktail, CocktailWithIngredients } from '../types/supabase';
+import type { Cocktail, CocktailWithIngredients, BottleSize } from '../types/supabase';
 
-interface CocktailWithImage extends CocktailWithIngredients {
+interface CocktailWithImage extends Cocktail {
   imageUrl: string;
   cost: number;
-  ingredients: Array<{
+  ingredients: {
     name: string;
     amount: number;
     unit: string;
     price: number;
-  }>;
+  }[];
 }
+
+const bottleSizeToMl: Record<BottleSize, number> = {
+  '50ml': 50,
+  '200ml': 200,
+  '375ml': 375,
+  '500ml': 500,
+  '750ml': 750,
+  '1L': 1000,
+  '1.75L': 1750
+};
+
+const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize): number => {
+  if (price === null) return 0;
+  const mlInBottle = bottleSizeToMl[bottleSize];
+  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
+  return (price * mlPerOunce) / mlInBottle;
+};
 
 export default function FeaturedCocktails() {
   const [cocktails, setCocktails] = useState<CocktailWithImage[]>([]);
@@ -55,7 +72,8 @@ export default function FeaturedCocktails() {
             unit,
             ingredients (
               name,
-              price
+              price,
+              bottle_size
             )
           )
         `);
@@ -95,12 +113,15 @@ export default function FeaturedCocktails() {
             console.log(`Image URL for ${cocktail.name}:`, imageUrl);
 
             // Calculate total cost and process ingredients
-            const ingredients = cocktail.cocktail_ingredients.map(ci => ({
-              name: ci.ingredients.name,
-              amount: ci.amount,
-              unit: ci.unit,
-              price: ci.ingredients.price
-            }));
+            const ingredients = cocktail.cocktail_ingredients.map(ci => {
+              const pricePerOunce = calculatePricePerOunce(ci.ingredients.price, ci.ingredients.bottle_size);
+              return {
+                name: ci.ingredients.name,
+                amount: ci.amount,
+                unit: ci.unit,
+                price: pricePerOunce
+              };
+            });
 
             const totalCost = ingredients.reduce((sum, ing) => {
               return sum + (ing.price * ing.amount);
@@ -129,8 +150,8 @@ export default function FeaturedCocktails() {
       console.log('Final processed cocktails:', processedCocktails);
       setCocktails(processedCocktails);
     } catch (error) {
-      console.error('Error in fetchCocktails:', error);
-      setError(error instanceof Error ? error.message : 'An error occurred while fetching cocktails');
+      console.error('Error fetching cocktails:', error);
+      setError('Failed to load cocktails');
     } finally {
       setLoading(false);
     }

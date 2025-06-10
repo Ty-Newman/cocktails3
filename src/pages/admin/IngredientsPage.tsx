@@ -20,6 +20,9 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  InputAdornment,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -38,6 +41,15 @@ interface Ingredient {
   type: IngredientType | null;
 }
 
+interface FormData {
+  name: string;
+  type: IngredientType | null;
+  price: string;
+  bottle_size: BottleSize | null;
+  link: string;
+  isBottled: boolean;
+}
+
 // Bottle size to ml conversion
 const bottleSizeToMl: Record<BottleSize, number> = {
   '50ml': 50,
@@ -49,24 +61,42 @@ const bottleSizeToMl: Record<BottleSize, number> = {
   '1.75L': 1750
 };
 
-// Calculate price per ounce (1 oz = 29.5735 ml)
-const calculatePricePerOunce = (price: number, bottleSize: BottleSize): number => {
-  const ml = bottleSizeToMl[bottleSize];
-  return (price / ml) * 29.5735;
+// Calculate price per unit (1 oz = 29.5735 ml)
+const calculatePricePerUnit = (price: number, bottleSize: BottleSize, type: IngredientType): number => {
+  const mlInBottle = bottleSizeToMl[bottleSize];
+  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
+  
+  if (type === 'bitters') {
+    // Average bitters bottle has about 200 dashes
+    const dashesPerBottle = 200;
+    return price / dashesPerBottle;
+  }
+  
+  return (price * mlPerOunce) / mlInBottle;
 };
+
+const ingredientTypeOptions = [
+  { value: 'spirit', label: 'Spirit' },
+  { value: 'liqueur', label: 'Liqueur' },
+  { value: 'syrup', label: 'Syrup' },
+  { value: 'bitters', label: 'Bitters' },
+  { value: 'juice', label: 'Juice' },
+  { value: 'other', label: 'Other' }
+];
 
 export function IngredientsPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [open, setOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     name: '',
+    type: null,
     price: '',
-    bottle_size: '750ml' as BottleSize,
+    bottle_size: null,
     link: '',
-    image_url: '',
-    type: '',
+    isBottled: true
   });
+  const [error, setError] = useState<string | null>(null);
 
   // Load saved state from sessionStorage on mount
   useEffect(() => {
@@ -125,17 +155,19 @@ export function IngredientsPage() {
         bottle_size: ingredient.bottle_size,
         link: ingredient.link || '',
         image_url: ingredient.image_url || '',
-        type: ingredient.type || '',
+        type: ingredient.type,
+        isBottled: true
       });
     } else {
       setEditingIngredient(null);
       setFormData({
         name: '',
         price: '',
-        bottle_size: '750ml',
+        bottle_size: null,
         link: '',
         image_url: '',
-        type: '',
+        type: null,
+        isBottled: true
       });
     }
     setOpen(true);
@@ -146,45 +178,92 @@ export function IngredientsPage() {
     setEditingIngredient(null);
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
+    const { name, value } = e.target;
+    if (name === 'type') {
+      if (value === 'bitters') {
+        setFormData(prev => ({
+          ...prev,
+          [name as string]: value,
+          bottle_size: '200ml',
+          isBottled: true
+        }));
+      } else if (value === 'garnish') {
+        setFormData(prev => ({
+          ...prev,
+          [name as string]: value,
+          bottle_size: null,
+          price: '',
+          isBottled: false
+        }));
+      } else if (value === 'other' || value === 'juice') {
+        setFormData(prev => ({
+          ...prev,
+          [name as string]: value,
+          bottle_size: prev.isBottled ? prev.bottle_size : null,
+          price: ''
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [name as string]: value,
+          isBottled: true
+        }));
+      }
+    } else if (name === 'isBottled') {
+      const isChecked = (e.target as HTMLInputElement).checked;
+      setFormData(prev => ({
+        ...prev,
+        isBottled: isChecked,
+        bottle_size: isChecked ? prev.bottle_size : null
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name as string]: value
+      }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      const pricePerUnit = calculatePricePerUnit(
+        formData.price,
+        formData.bottle_size,
+        formData.type
+      );
 
-    const price = formData.price ? parseFloat(formData.price) : null;
-    const pricePerOunce = price ? calculatePricePerOunce(price, formData.bottle_size) : null;
+      const ingredientData = {
+        name: formData.name,
+        type: formData.type,
+        price: formData.price,
+        bottle_size: formData.bottle_size,
+        price_per_ounce: pricePerUnit,
+        link: formData.link || null,
+      };
 
-    const ingredientData = {
-      name: formData.name,
-      price,
-      bottle_size: formData.bottle_size,
-      price_per_ounce: pricePerOunce,
-      link: formData.link || null,
-      image_url: formData.image_url || null,
-      type: formData.type || null,
-    };
+      if (editingIngredient) {
+        const { error } = await supabase
+          .from('ingredients')
+          .update(ingredientData)
+          .eq('id', editingIngredient.id);
 
-    if (editingIngredient) {
-      const { error } = await supabase
-        .from('ingredients')
-        .update(ingredientData)
-        .eq('id', editingIngredient.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('ingredients')
+          .insert([ingredientData]);
 
-      if (error) {
-        console.error('Error updating ingredient:', error);
-        return;
+        if (error) throw error;
       }
-    } else {
-      const { error } = await supabase
-        .from('ingredients')
-        .insert([ingredientData]);
 
-      if (error) {
-        console.error('Error creating ingredient:', error);
-        return;
-      }
+      handleClose();
+      fetchIngredients();
+    } catch (error) {
+      console.error('Error saving ingredient:', error);
+      setError('Failed to save ingredient');
     }
-
-    handleClose();
-    fetchIngredients();
   };
 
   const handleDelete = async (id: string) => {
@@ -277,13 +356,14 @@ export function IngredientsPage() {
             {editingIngredient ? 'Edit Ingredient' : 'Add New Ingredient'}
           </DialogTitle>
           <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+            <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <TextField
+                fullWidth
+                required
+                name="name"
                 label="Name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                fullWidth
+                onChange={handleChange}
               />
               <FormControl fullWidth>
                 <InputLabel>Type</InputLabel>
@@ -304,46 +384,92 @@ export function IngredientsPage() {
                   <MenuItem value="beer">Beer</MenuItem>
                   <MenuItem value="mixer">Mixer</MenuItem>
                   <MenuItem value="syrup">Syrup</MenuItem>
+                  <MenuItem value="bitters">Bitters</MenuItem>
+                  <MenuItem value="juice">Juice</MenuItem>
                   <MenuItem value="garnish">Garnish</MenuItem>
                   <MenuItem value="other">Other</MenuItem>
                 </Select>
               </FormControl>
-              <FormControl fullWidth>
-                <InputLabel>Bottle Size</InputLabel>
-                <Select
-                  value={formData.bottle_size}
-                  label="Bottle Size"
-                  onChange={(e) => setFormData({ ...formData, bottle_size: e.target.value as BottleSize })}
-                >
-                  <MenuItem value="50ml">50ml (Mini)</MenuItem>
-                  <MenuItem value="200ml">200ml (Airplane)</MenuItem>
-                  <MenuItem value="375ml">375ml (Half)</MenuItem>
-                  <MenuItem value="500ml">500ml</MenuItem>
-                  <MenuItem value="750ml">750ml (Standard)</MenuItem>
-                  <MenuItem value="1L">1L</MenuItem>
-                  <MenuItem value="1.75L">1.75L (Handle)</MenuItem>
-                </Select>
-              </FormControl>
-              <TextField
-                label="Price"
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                InputProps={{
-                  startAdornment: <Typography>$</Typography>,
-                }}
-                fullWidth
-              />
-              {formData.price && formData.bottle_size && (
-                <Typography variant="body2" color="text.secondary">
-                  Price per ounce: ${calculatePricePerOunce(parseFloat(formData.price), formData.bottle_size).toFixed(2)}
-                </Typography>
+              {(formData.type === 'other' || formData.type === 'juice') && (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.isBottled}
+                      onChange={handleChange}
+                      name="isBottled"
+                    />
+                  }
+                  label="This is a bottled ingredient"
+                />
+              )}
+              {formData.type === 'garnish' || 
+               (formData.type === 'other' && !formData.isBottled) ||
+               (formData.type === 'juice' && !formData.isBottled) ? (
+                <TextField
+                  fullWidth
+                  required
+                  name="price"
+                  label="Price per Unit"
+                  type="number"
+                  value={formData.price}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                  }}
+                  helperText={formData.type === 'garnish' 
+                    ? "Enter the price per individual garnish (e.g., per lime, per orange slice)"
+                    : formData.type === 'juice'
+                    ? "Enter the price per individual juice (e.g., per lemon, per lime)"
+                    : "Enter the price per individual unit"}
+                />
+              ) : (
+                <TextField
+                  fullWidth
+                  required
+                  name="price"
+                  label="Price"
+                  type="number"
+                  value={formData.price}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                  }}
+                  helperText={formData.price && formData.bottle_size ? 
+                    `Price per ${formData.type === 'bitters' ? 'dash' : 'ounce'}: $${calculatePricePerUnit(
+                      formData.price,
+                      formData.bottle_size,
+                      formData.type
+                    ).toFixed(2)}` : ''}
+                />
+              )}
+              {formData.type !== 'bitters' && formData.type !== 'garnish' && 
+               (formData.type !== 'other' || formData.isBottled) &&
+               (formData.type !== 'juice' || formData.isBottled) && (
+                <FormControl fullWidth required>
+                  <InputLabel>Bottle Size</InputLabel>
+                  <Select
+                    name="bottle_size"
+                    value={formData.bottle_size}
+                    onChange={handleChange}
+                    label="Bottle Size"
+                  >
+                    <MenuItem value="50ml">50ml</MenuItem>
+                    <MenuItem value="200ml">200ml</MenuItem>
+                    <MenuItem value="375ml">375ml</MenuItem>
+                    <MenuItem value="500ml">500ml</MenuItem>
+                    <MenuItem value="750ml">750ml</MenuItem>
+                    <MenuItem value="1L">1L</MenuItem>
+                    <MenuItem value="1.75L">1.75L</MenuItem>
+                  </Select>
+                </FormControl>
               )}
               <TextField
+                fullWidth
+                name="link"
                 label="Link"
                 value={formData.link}
                 onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                fullWidth
+                helperText="Optional link to purchase the ingredient"
               />
               <TextField
                 label="Image URL"

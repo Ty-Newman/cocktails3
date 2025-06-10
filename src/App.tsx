@@ -7,6 +7,9 @@ import { AdminRoute } from './components/AdminRoute';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { IngredientsPage } from './pages/admin/IngredientsPage';
 import FeaturedCocktails from './components/FeaturedCocktails';
+import { CocktailsPage } from './pages/admin/CocktailsPage';
+import { OrdersPage } from './pages/admin/OrdersPage';
+import { UsersPage } from './pages/admin/UsersPage';
 
 const theme = createTheme({
   palette: {
@@ -68,8 +71,11 @@ function AppContent() {
               </AdminRoute>
             }
           >
-            <Route index element={<Navigate to="ingredients" replace />} />
+            <Route index element={<Navigate to="/admin/ingredients" replace />} />
             <Route path="ingredients" element={<IngredientsPage />} />
+            <Route path="cocktails" element={<CocktailsPage />} />
+            <Route path="orders" element={<OrdersPage />} />
+            <Route path="users" element={<UsersPage />} />
           </Route>
         </Routes>
       </Container>

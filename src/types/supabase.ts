@@ -15,7 +15,9 @@ export type IngredientType =
   | 'mixer'
   | 'garnish'
   | 'other'
-  | 'syrup';
+  | 'syrup'
+  | 'bitters'
+  | 'juice';
 
 export interface Profile {
   id: string;
@@ -36,9 +38,8 @@ export interface Cocktail {
 export interface Ingredient {
   id: string;
   name: string;
-  price: number | null;
   bottle_size: BottleSize;
-  price_per_ounce: number | null;
+  price: number | null;
   link: string | null;
   image_url: string | null;
   type: IngredientType | null;
@@ -54,7 +55,7 @@ export interface CocktailIngredient {
   unit: string;
   created_at: string;
   updated_at: string;
-  ingredients: Ingredient;
+  ingredients?: Ingredient;
 }
 
 export interface Favorite {
@@ -92,5 +93,7 @@ export interface OrderItem {
 }
 
 export interface CocktailWithIngredients extends Cocktail {
-  cocktail_ingredients: CocktailIngredient[];
+  cocktail_ingredients: Array<CocktailIngredient & {
+    ingredients: Ingredient;
+  }>;
 } 
