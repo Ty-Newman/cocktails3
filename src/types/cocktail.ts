@@ -1,25 +1,16 @@
+export type IngredientType = 'spirit' | 'liqueur' | 'wine' | 'beer' | 'mixer' | 'bitters' | 'garnish' | 'other';
+
+export type BottleSize = '50ml' | '200ml' | '375ml' | '500ml' | '750ml' | '1L' | '1.75L';
+
 export interface Cocktail {
   id: string;
   name: string;
-  description: string | null;
-  image_url: string | null;
+  description: string;
+  image_url?: string;
   created_at: string;
   updated_at: string;
-  ingredients?: CocktailIngredient[];
   cost?: number;
-}
-
-export interface Ingredient {
-  id: string;
-  name: string;
-  link: string | null;
-  price: number | null;
-  bottle_size: string;
-  price_per_ounce: number | null;
-  image_url: string | null;
-  type: string;
-  created_at: string;
-  updated_at: string;
+  cocktail_ingredients?: CocktailIngredient[];
 }
 
 export interface CocktailIngredient {
@@ -28,7 +19,19 @@ export interface CocktailIngredient {
   ingredient_id: string;
   amount: number;
   unit: string;
+  ingredients?: Ingredient;
+}
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  bottle_size: BottleSize | null;
+  type: IngredientType;
+  link?: string;
+  image_url?: string;
   created_at: string;
   updated_at: string;
-  ingredient?: Ingredient;
+  is_bottled: boolean;
 } 

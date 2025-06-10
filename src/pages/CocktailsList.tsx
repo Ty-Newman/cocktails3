@@ -21,7 +21,7 @@ import { supabase } from '../lib/supabase';
 import { searchCocktailByName } from '../services/cocktailDB';
 import { useCart } from '../contexts/CartContext';
 import { FavoriteButton } from '../components/FavoriteButton';
-import type { Cocktail, IngredientType, BottleSize } from '../types/cocktail';
+import type { Cocktail, IngredientType, BottleSize, CocktailIngredient } from '../types/cocktail';
 
 // Add the bottle size to ml mapping
 const bottleSizeToMl: Record<BottleSize, number> = {
@@ -50,7 +50,7 @@ const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize | n
 };
 
 // Add function to calculate cocktail cost
-const calculateCocktailCost = (ingredients: any[]): number => {
+const calculateCocktailCost = (ingredients: CocktailIngredient[]): number => {
   if (!ingredients || ingredients.length === 0) return 0;
 
   return ingredients.reduce((total, ingredient) => {
@@ -114,6 +114,7 @@ export function CocktailsList() {
         .select(`
           *,
           cocktail_ingredients (
+            id,
             amount,
             unit,
             ingredients (
