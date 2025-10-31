@@ -442,7 +442,7 @@ export function CocktailsPage() {
           variant="contained"
           color="primary"
           startIcon={<AddIcon />}
-          onClick={() => setOpen(true)}
+          onClick={() => handleOpen()}
         >
           Add Cocktail
         </Button>
@@ -507,10 +507,7 @@ export function CocktailsPage() {
                   </TableCell>
                   <TableCell>
                     <IconButton
-                      onClick={() => {
-                        setEditingCocktail(cocktail);
-                        setOpen(true);
-                      }}
+                      onClick={() => handleOpen(cocktail)}
                     >
                       <EditIcon />
                     </IconButton>

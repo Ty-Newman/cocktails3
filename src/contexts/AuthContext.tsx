@@ -124,6 +124,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setupAuth();
   }, []);
 
+  const getRedirectUrl = () => {
+    // Allow override via environment variable, otherwise use current origin
+    const envRedirectUrl = import.meta.env.VITE_AUTH_REDIRECT_URL;
+    const baseUrl = envRedirectUrl || window.location.origin;
+    return `${baseUrl}/auth/callback`;
+  };
+
   const signInWithGoogle = async () => {
     const supabase = await getSupabaseClient();
     if (!supabase) {
@@ -131,10 +138,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      const redirectTo = getRedirectUrl();
+      console.log('Google OAuth redirect URL:', redirectTo);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo
         }
       });
       if (error) throw error;
@@ -151,10 +160,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      const redirectTo = getRedirectUrl();
+      console.log('Discord OAuth redirect URL:', redirectTo);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo
         }
       });
       if (error) throw error;
