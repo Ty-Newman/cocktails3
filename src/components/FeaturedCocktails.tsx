@@ -98,16 +98,20 @@ export default function FeaturedCocktails() {
         (data as CocktailWithIngredients[]).map(async (cocktail) => {
           try {
             console.log(`Processing cocktail: ${cocktail.name}`);
-            const imageData = await searchCocktailByName(cocktail.name);
-            console.log('Image data received:', imageData);
             
-            let imageUrl = '';
-            if (imageData?.drinks && imageData.drinks.length > 0) {
-              // Find the best match
-              const bestMatch = imageData.drinks.find(drink => 
-                drink.strDrink.toLowerCase().includes(cocktail.name.toLowerCase())
-              ) || imageData.drinks[0];
-              imageUrl = bestMatch.strDrinkThumb;
+            // Only search API if image_url is not already provided
+            let imageUrl = cocktail.image_url || '';
+            if (!imageUrl) {
+              const imageData = await searchCocktailByName(cocktail.name);
+              console.log('Image data received:', imageData);
+              
+              if (imageData?.drinks && imageData.drinks.length > 0) {
+                // Find the best match
+                const bestMatch = imageData.drinks.find(drink => 
+                  drink.strDrink.toLowerCase().includes(cocktail.name.toLowerCase())
+                ) || imageData.drinks[0];
+                imageUrl = bestMatch.strDrinkThumb;
+              }
             }
             
             console.log(`Image URL for ${cocktail.name}:`, imageUrl);

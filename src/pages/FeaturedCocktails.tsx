@@ -160,8 +160,13 @@ export function FeaturedCocktails() {
         const processedCocktails = await Promise.all(
           data.map(async (cocktail) => {
             console.log('Processing cocktail:', cocktail.name);
-            const imageData = await searchCocktailByName(cocktail.name);
-            const imageUrl = imageData?.drinks?.[0]?.strDrinkThumb;
+            
+            // Only search API if image_url is not already provided
+            let imageUrl = cocktail.image_url;
+            if (!imageUrl) {
+              const imageData = await searchCocktailByName(cocktail.name);
+              imageUrl = imageData?.drinks?.[0]?.strDrinkThumb;
+            }
 
             // Calculate cost using the helper function
             const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);

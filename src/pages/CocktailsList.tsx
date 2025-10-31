@@ -133,11 +133,17 @@ export function CocktailsList() {
       // Process cocktails with images from CocktailDB and calculate costs
       const processedCocktails = await Promise.all(
         (data || []).map(async (cocktail) => {
-          const imageData = await searchCocktailByName(cocktail.name);
+          // Only search API if image_url is not already provided
+          let imageUrl = cocktail.image_url;
+          if (!imageUrl) {
+            const imageData = await searchCocktailByName(cocktail.name);
+            imageUrl = imageData?.drinks?.[0]?.strDrinkThumb;
+          }
+          
           const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);
           return {
             ...cocktail,
-            image_url: imageData?.drinks?.[0]?.strDrinkThumb,
+            image_url: imageUrl,
             cost
           };
         })
