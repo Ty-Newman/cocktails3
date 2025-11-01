@@ -99,18 +99,37 @@ export default function FeaturedCocktails() {
           try {
             console.log(`Processing cocktail: ${cocktail.name}`);
             
-            // Only search API if image_url is not already provided
+            // Only search API if image_url is not already provided (check for null, undefined, empty string, or placeholder URLs)
             let imageUrl = cocktail.image_url || '';
-            if (!imageUrl) {
-              const imageData = await searchCocktailByName(cocktail.name);
-              console.log('Image data received:', imageData);
-              
-              if (imageData?.drinks && imageData.drinks.length > 0) {
-                // Find the best match
-                const bestMatch = imageData.drinks.find(drink => 
-                  drink.strDrink.toLowerCase().includes(cocktail.name.toLowerCase())
-                ) || imageData.drinks[0];
-                imageUrl = bestMatch.strDrinkThumb;
+            
+            // Check if URL is a placeholder/example URL that should be replaced
+            const isPlaceholderUrl = (url: string | null | undefined): boolean => {
+              if (!url || typeof url !== 'string') return true;
+              const lowerUrl = url.toLowerCase();
+              return lowerUrl.includes('example.com') ||
+                     lowerUrl.includes('placeholder') ||
+                     lowerUrl.includes('placehold') ||
+                     lowerUrl.includes('via.placeholder') ||
+                     lowerUrl.includes('dummy') ||
+                     lowerUrl.startsWith('http://example') ||
+                     lowerUrl.startsWith('https://example');
+            };
+            
+            if (!imageUrl || imageUrl.trim() === '' || isPlaceholderUrl(imageUrl)) {
+              try {
+                const imageData = await searchCocktailByName(cocktail.name);
+                console.log('Image data received:', imageData);
+                
+                if (imageData?.drinks && imageData.drinks.length > 0) {
+                  // Find the best match
+                  const bestMatch = imageData.drinks.find(drink => 
+                    drink.strDrink.toLowerCase().includes(cocktail.name.toLowerCase())
+                  ) || imageData.drinks[0];
+                  imageUrl = bestMatch.strDrinkThumb || imageUrl;
+                }
+              } catch (error) {
+                console.error(`Error fetching image for ${cocktail.name}:`, error);
+                // Continue with existing imageUrl (or empty string)
               }
             }
             

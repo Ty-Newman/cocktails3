@@ -159,23 +159,52 @@ export function FeaturedCocktails() {
         console.log('Processing cocktails with images and costs...');
         const processedCocktails = await Promise.all(
           data.map(async (cocktail) => {
-            console.log('Processing cocktail:', cocktail.name);
-            
-            // Only search API if image_url is not already provided
-            let imageUrl = cocktail.image_url;
-            if (!imageUrl) {
-              const imageData = await searchCocktailByName(cocktail.name);
-              imageUrl = imageData?.drinks?.[0]?.strDrinkThumb;
+            try {
+              console.log('Processing cocktail:', cocktail.name);
+              
+              // Only search API if image_url is not already provided (check for null, undefined, empty string, or placeholder URLs)
+              let imageUrl = cocktail.image_url;
+              
+              // Check if URL is a placeholder/example URL that should be replaced
+              const isPlaceholderUrl = (url: string | null | undefined): boolean => {
+                if (!url || typeof url !== 'string') return true;
+                const lowerUrl = url.toLowerCase();
+                return lowerUrl.includes('example.com') ||
+                       lowerUrl.includes('placeholder') ||
+                       lowerUrl.includes('placehold') ||
+                       lowerUrl.includes('via.placeholder') ||
+                       lowerUrl.includes('dummy') ||
+                       lowerUrl.startsWith('http://example') ||
+                       lowerUrl.startsWith('https://example');
+              };
+              
+              if (!imageUrl || (typeof imageUrl === 'string' && imageUrl.trim() === '') || isPlaceholderUrl(imageUrl)) {
+                try {
+                  const imageData = await searchCocktailByName(cocktail.name);
+                  imageUrl = imageData?.drinks?.[0]?.strDrinkThumb || imageUrl;
+                } catch (error) {
+                  console.error(`Error fetching image for ${cocktail.name}:`, error);
+                  // Continue with existing imageUrl (or null/undefined)
+                }
+              }
+
+              // Calculate cost using the helper function
+              const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);
+
+              return {
+                ...cocktail,
+                image_url: imageUrl,
+                cost: cost
+              };
+            } catch (error) {
+              console.error(`Error processing cocktail ${cocktail.name}:`, error);
+              // Return cocktail with original image_url if processing fails
+              return {
+                ...cocktail,
+                image_url: cocktail.image_url || null,
+                cost: calculateCocktailCost(cocktail.cocktail_ingredients || [])
+              };
             }
-
-            // Calculate cost using the helper function
-            const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);
-
-            return {
-              ...cocktail,
-              image_url: imageUrl,
-              cost: cost
-            };
           })
         );
 
