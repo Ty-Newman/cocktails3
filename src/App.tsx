@@ -46,7 +46,11 @@ function AppContent() {
   return (
     <>
       <AppBar />
-      <Container>
+      <Container
+        maxWidth={false}
+        disableGutters
+        sx={{ px: { xs: 1, sm: 2 }, py: { xs: 2, sm: 3 } }}
+      >
         <Routes>
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />

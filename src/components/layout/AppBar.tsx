@@ -80,6 +80,17 @@ export function AppBar() {
                 <ShoppingCartIcon />
               </Badge>
             </IconButton>
+            {user && (
+              <IconButton
+                color="inherit"
+                component={RouterLink}
+                to="/profile"
+                sx={{ mr: 1 }}
+                aria-label="Profile"
+              >
+                <AccountCircleIcon />
+              </IconButton>
+            )}
             <IconButton
               edge="end"
               color="inherit"
