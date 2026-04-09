@@ -20,7 +20,10 @@ import {
   MenuItem,
   Box,
   Alert,
-  Snackbar
+  Snackbar,
+  useMediaQuery,
+  useTheme,
+  Stack
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -42,6 +45,8 @@ export function UsersPage() {
   const [open, setOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -213,9 +218,30 @@ export function UsersPage() {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+    <Container
+      maxWidth="lg"
+      sx={{
+        mt: { xs: 1, sm: 4 },
+        mb: { xs: 2, sm: 4 },
+        px: { xs: 0, sm: 2 },
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          flexWrap: 'wrap',
+          gap: 1.5,
+          mb: 2,
+        }}
+      >
+        <Typography
+          variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{ mb: { xs: 0, sm: 1 }, fontSize: { xs: '1.5rem', sm: '2.125rem' } }}
+        >
           Users
         </Typography>
         <Button 
@@ -224,6 +250,7 @@ export function UsersPage() {
             console.log('Current user state:', { users, error });
             fetchUsers();
           }}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
         >
           Debug Refresh
         </Button>
@@ -236,40 +263,43 @@ export function UsersPage() {
       )}
 
       <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-        <TableContainer sx={{ maxHeight: 440 }}>
-          <Table stickyHeader aria-label="users table">
-            <TableHead>
-              <TableRow>
-                <TableCell>ID</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Created At</TableCell>
-                <TableCell>Updated At</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center">
-                    No users found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.id}</TableCell>
-                    <TableCell>{user.role}</TableCell>
-                    <TableCell>
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.updated_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
+        {isMobile ? (
+          <Box sx={{ p: 1 }}>
+            {users.length === 0 ? (
+              <Typography color="text.secondary" sx={{ p: 1 }}>
+                No users found
+              </Typography>
+            ) : (
+              <Stack spacing={1}>
+                {users.map((user) => (
+                  <Paper
+                    key={user.id}
+                    variant="outlined"
+                    sx={{ p: 1.25, display: 'flex', gap: 1, alignItems: 'flex-start' }}
+                  >
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        ID
+                      </Typography>
+                      <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                        {user.id}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mt: 0.75 }}>
+                        <Box component="span" sx={{ color: 'text.secondary' }}>
+                          Role:{' '}
+                        </Box>
+                        {user.role}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                        Created: {new Date(user.created_at).toLocaleDateString()}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpen(user)}
                         color="primary"
+                        aria-label="Edit"
                       >
                         <EditIcon />
                       </IconButton>
@@ -277,16 +307,69 @@ export function UsersPage() {
                         size="small"
                         onClick={() => handleDelete(user.id)}
                         color="error"
+                        aria-label="Delete"
                       >
                         <DeleteIcon />
                       </IconButton>
+                    </Box>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </Box>
+        ) : (
+          <TableContainer sx={{ maxHeight: 440, overflowX: 'auto' }}>
+            <Table stickyHeader aria-label="users table" sx={{ minWidth: 900 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>ID</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>Created At</TableCell>
+                  <TableCell>Updated At</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {users.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">
+                      No users found
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                ) : (
+                  users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>{user.id}</TableCell>
+                      <TableCell>{user.role}</TableCell>
+                      <TableCell>
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(user.updated_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpen(user)}
+                          color="primary"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDelete(user.id)}
+                          color="error"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Paper>
 
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>

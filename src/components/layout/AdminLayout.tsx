@@ -129,13 +129,19 @@ export function AdminLayout() {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          p: { xs: 1.5, sm: 3 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: '64px'
+          mt: { xs: '56px', sm: '64px' },
         }}
       >
-        <Container maxWidth="lg">
-          <Paper sx={{ p: 3 }}>
+        <Container
+          maxWidth="lg"
+          disableGutters={isMobile}
+          sx={{
+            px: { xs: 0, sm: 0 },
+          }}
+        >
+          <Paper sx={{ p: { xs: 1.5, sm: 3 }, overflowX: 'hidden' }}>
             <Outlet />
           </Paper>
         </Container>

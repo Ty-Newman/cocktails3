@@ -31,6 +31,9 @@ import {
   InputAdornment,
   Snackbar,
   Alert,
+  useMediaQuery,
+  useTheme,
+  Stack,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -137,6 +140,8 @@ export function CocktailsPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [open, setOpen] = useState(false);
   const [editingCocktail, setEditingCocktail] = useState<Cocktail | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -433,9 +438,25 @@ export function CocktailsPage() {
   );
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
+    <Container
+      maxWidth="lg"
+      sx={{
+        mt: { xs: 1, sm: 4 },
+        mb: { xs: 2, sm: 4 },
+        px: { xs: 0, sm: 2 },
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          flexWrap: 'wrap',
+          gap: 1.5,
+          mb: 3,
+        }}
+      >
+        <Typography variant="h4" component="h1" sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>
           Cocktails
         </Typography>
         <Button
@@ -443,6 +464,7 @@ export function CocktailsPage() {
           color="primary"
           startIcon={<AddIcon />}
           onClick={() => handleOpen()}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
         >
           Add Cocktail
         </Button>
@@ -465,61 +487,123 @@ export function CocktailsPage() {
       />
 
       <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-        <TableContainer sx={{ maxHeight: 440 }}>
-          <Table stickyHeader aria-label="cocktails table">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Ingredients</TableCell>
-                <TableCell>Cost</TableCell>
-                <TableCell>Featured</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+        {isMobile ? (
+          <Box sx={{ p: 1 }}>
+            <Stack spacing={1}>
               {filteredCocktails.map((cocktail) => (
-                <TableRow key={cocktail.id}>
-                  <TableCell>{cocktail.name}</TableCell>
-                  <TableCell>{cocktail.description}</TableCell>
-                  <TableCell>
-                    {cocktail.cocktail_ingredients?.map((ci, index) => (
-                      <Typography key={index}>
-                        {ci.amount} {ci.unit} {ci.ingredients?.name}
+                <Paper
+                  key={cocktail.id}
+                  variant="outlined"
+                  sx={{ p: 1.25, display: 'flex', gap: 1, alignItems: 'flex-start' }}
+                >
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      {cocktail.name}
+                    </Typography>
+                    {cocktail.description && (
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          mt: 0.25,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {cocktail.description}
                       </Typography>
-                    ))}
-                  </TableCell>
-                  <TableCell>
-                    ${isNaN(calculateCocktailCost(cocktail.cocktail_ingredients || [])) 
-                      ? '0.00' 
-                      : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={cocktail.is_featured}
-                          onChange={(e) => handleToggleFeatured(cocktail.id, e.target.checked)}
-                        />
-                      }
-                      label={cocktail.is_featured ? 'Featured' : 'Not Featured'}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <IconButton
-                      onClick={() => handleOpen(cocktail)}
-                    >
+                    )}
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Cost:{' '}
+                      ${isNaN(calculateCocktailCost(cocktail.cocktail_ingredients || [])) 
+                        ? '0.00' 
+                        : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
+                    </Typography>
+                    <Box sx={{ mt: 0.75 }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={cocktail.is_featured}
+                            onChange={(e) => handleToggleFeatured(cocktail.id, e.target.checked)}
+                          />
+                        }
+                        label={cocktail.is_featured ? 'Featured' : 'Not Featured'}
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                    <IconButton onClick={() => handleOpen(cocktail)} aria-label="Edit">
                       <EditIcon />
                     </IconButton>
-                    <IconButton onClick={() => handleDelete(cocktail.id)}>
+                    <IconButton onClick={() => handleDelete(cocktail.id)} aria-label="Delete">
                       <DeleteIcon />
                     </IconButton>
-                  </TableCell>
-                </TableRow>
+                  </Box>
+                </Paper>
               ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </Stack>
+          </Box>
+        ) : (
+          <TableContainer sx={{ maxHeight: 440, overflowX: 'auto' }}>
+            <Table stickyHeader aria-label="cocktails table" sx={{ minWidth: 900 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Description</TableCell>
+                  <TableCell>Ingredients</TableCell>
+                  <TableCell>Cost</TableCell>
+                  <TableCell>Featured</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredCocktails.map((cocktail) => (
+                  <TableRow key={cocktail.id}>
+                    <TableCell>{cocktail.name}</TableCell>
+                    <TableCell>{cocktail.description}</TableCell>
+                    <TableCell>
+                      {cocktail.cocktail_ingredients?.map((ci, index) => (
+                        <Typography key={index}>
+                          {ci.amount} {ci.unit} {ci.ingredients?.name}
+                        </Typography>
+                      ))}
+                    </TableCell>
+                    <TableCell>
+                      ${isNaN(calculateCocktailCost(cocktail.cocktail_ingredients || [])) 
+                        ? '0.00' 
+                        : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={cocktail.is_featured}
+                            onChange={(e) => handleToggleFeatured(cocktail.id, e.target.checked)}
+                          />
+                        }
+                        label={cocktail.is_featured ? 'Featured' : 'Not Featured'}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        onClick={() => handleOpen(cocktail)}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton onClick={() => handleDelete(cocktail.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Paper>
 
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>

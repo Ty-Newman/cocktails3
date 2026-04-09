@@ -25,6 +25,9 @@ import {
   Checkbox,
   Snackbar,
   Alert,
+  useMediaQuery,
+  useTheme,
+  Stack,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -97,6 +100,8 @@ export function IngredientsPage() {
   const [open, setOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
     message: '',
@@ -310,58 +315,112 @@ export function IngredientsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          flexWrap: 'wrap',
+          gap: 1.5,
+          mb: 2,
+        }}
+      >
         <Typography variant="h5">Manage Ingredients</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpen()}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
         >
           Add Ingredient
         </Button>
       </Box>
 
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Price</TableCell>
-              <TableCell>Link</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {ingredients.map((ingredient) => (
-              <TableRow key={ingredient.id}>
-                <TableCell>{ingredient.name}</TableCell>
-                <TableCell>{ingredient.type}</TableCell>
-                <TableCell>${ingredient.price?.toFixed(2)}</TableCell>
-                <TableCell>
-                  {ingredient.link && (
-                    <a 
-                      href={ingredient.link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      title={ingredient.link}
-                    >
-                      {truncateLink(ingredient.link)}
-                    </a>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <IconButton onClick={() => handleOpen(ingredient)}>
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleDelete(ingredient.id)}>
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
+      <TableContainer component={Paper} sx={{ width: '100%', overflowX: 'auto' }}>
+        {isMobile ? (
+          <Box sx={{ p: 1 }}>
+            <Stack spacing={1}>
+              {ingredients.map((ingredient) => (
+                <Paper
+                  key={ingredient.id}
+                  variant="outlined"
+                  sx={{ p: 1.25, display: 'flex', gap: 1, alignItems: 'flex-start' }}
+                >
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      {ingredient.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {ingredient.type ?? '—'}
+                      {ingredient.price != null ? ` • $${ingredient.price.toFixed(2)}` : ''}
+                    </Typography>
+                    {ingredient.link && (
+                      <Typography variant="body2" sx={{ mt: 0.5 }}>
+                        <a
+                          href={ingredient.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={ingredient.link}
+                        >
+                          {truncateLink(ingredient.link)}
+                        </a>
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <IconButton onClick={() => handleOpen(ingredient)} aria-label="Edit">
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton onClick={() => handleDelete(ingredient.id)} aria-label="Delete">
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                </Paper>
+              ))}
+            </Stack>
+          </Box>
+        ) : (
+          <Table sx={{ minWidth: 650 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Price</TableCell>
+                <TableCell>Link</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {ingredients.map((ingredient) => (
+                <TableRow key={ingredient.id}>
+                  <TableCell>{ingredient.name}</TableCell>
+                  <TableCell>{ingredient.type}</TableCell>
+                  <TableCell>${ingredient.price?.toFixed(2)}</TableCell>
+                  <TableCell>
+                    {ingredient.link && (
+                      <a 
+                        href={ingredient.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        title={ingredient.link}
+                      >
+                        {truncateLink(ingredient.link)}
+                      </a>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <IconButton onClick={() => handleOpen(ingredient)}>
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton onClick={() => handleDelete(ingredient.id)}>
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
