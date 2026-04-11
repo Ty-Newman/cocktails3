@@ -125,6 +125,9 @@ export function ProfilePage() {
       const globalIds = [...new Set((globalRows ?? []).map((r) => r.cocktail_id as string))];
       const barIds = [...new Set((barRows ?? []).map((r) => r.cocktail_id as string))];
 
+      const globalOnThisMenu = globalIds.filter((id) => onMenu.has(id));
+      const atThisBarIds = [...new Set([...globalOnThisMenu, ...barIds])];
+
       const fetchByIds = async (ids: string[]) => {
         if (ids.length === 0) return [];
         const { data, error } = await supabase
@@ -152,7 +155,7 @@ export function ProfilePage() {
 
       const [globalEnriched, barEnriched] = await Promise.all([
         fetchByIds(globalIds),
-        fetchByIds(barIds),
+        fetchByIds(atThisBarIds),
       ]);
 
       setGlobalFavoriteCocktails(globalEnriched);

@@ -33,11 +33,13 @@ export function FavoriteButton({
     onFavoriteChange?.();
   };
 
+  const favorited = isFavorite(cocktailId, cocktailCatalogBarId);
+
   return (
     <Tooltip
       title={
         user
-          ? isFavorite(cocktailId)
+          ? favorited
             ? 'Remove from favorites'
             : 'Add to favorites'
           : 'Sign in to add favorites'
@@ -54,7 +56,7 @@ export function FavoriteButton({
           },
         }}
       >
-        {isFavorite(cocktailId) ? (
+        {favorited ? (
           <FavoriteIcon color="error" />
         ) : (
           <FavoriteBorderIcon />

@@ -1,5 +1,5 @@
 -- Reference schema for local documentation and greenfield resets.
--- Matches migrations through 20250415120000_phase6_global_bar_favorites.sql
+-- Matches migrations through 20250415140000_favorites_global_portable_cleanup.sql
 -- (+ bar_invite_links, accept_bar_invite; prior: bar_members, bar_cocktails, menu RLS, superadmin).
 -- Requires Supabase auth (auth.users). Seed default bar before any row that references bars.
 
@@ -218,6 +218,7 @@ create table public.favorite_cocktails_global (
 create index idx_favorite_cocktails_global_user_id on public.favorite_cocktails_global (user_id);
 create index idx_favorite_cocktails_global_cocktail_id on public.favorite_cocktails_global (cocktail_id);
 
+-- Bar-scoped favorites for bar-owned cocktails (cocktails.bar_id not null). Global templates use favorite_cocktails_global only.
 create table public.favorite_cocktails_bar (
     user_id uuid not null references public.profiles (id) on delete cascade,
     bar_id uuid not null references public.bars (id) on delete cascade,
