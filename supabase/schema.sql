@@ -1,5 +1,5 @@
 -- Reference schema for local documentation and greenfield resets.
--- Matches migrations through 20250412100000_bar_members_menu_global_cocktails.sql
+-- Matches migrations through 20250413120000_phase2_menu_enforcement_favorites_cart.sql
 -- (bar_members, bar_cocktails + per-bar featured, global cocktails bar_id NULL, superadmin, membership RLS).
 -- Requires Supabase auth (auth.users). Seed default bar before any row that references bars.
 
@@ -304,6 +304,26 @@ revoke all on function public.user_can_admin_bar(uuid) from public;
 grant execute on function public.user_can_admin_bar(uuid) to authenticated;
 grant execute on function public.user_can_admin_bar(uuid) to anon;
 
+create or replace function public.cocktail_on_bar_menu(p_bar_id uuid, p_cocktail_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.bar_cocktails bc
+    where bc.bar_id = p_bar_id
+      and bc.cocktail_id = p_cocktail_id
+      and bc.active = true
+  );
+$$;
+
+revoke all on function public.cocktail_on_bar_menu(uuid, uuid) from public;
+grant execute on function public.cocktail_on_bar_menu(uuid, uuid) to authenticated;
+grant execute on function public.cocktail_on_bar_menu(uuid, uuid) to anon;
+
 create or replace function public.current_user_is_admin()
 returns boolean
 language sql
@@ -509,13 +529,10 @@ create policy "Users can view their own favorites"
 create policy "Users can manage their own favorites"
     on public.favorites for all
     to authenticated
-    using (
-        auth.uid() = user_id
-        and bar_id = public.current_user_bar_id()
-    )
+    using (auth.uid() = user_id)
     with check (
         auth.uid() = user_id
-        and bar_id = public.current_user_bar_id()
+        and public.cocktail_on_bar_menu(bar_id, cocktail_id)
     );
 
 create policy "Users can view their own cart"
@@ -526,13 +543,10 @@ create policy "Users can view their own cart"
 create policy "Users can manage their own cart"
     on public.cart for all
     to authenticated
-    using (
-        auth.uid() = user_id
-        and bar_id = public.current_user_bar_id()
-    )
+    using (auth.uid() = user_id)
     with check (
         auth.uid() = user_id
-        and bar_id = public.current_user_bar_id()
+        and public.cocktail_on_bar_menu(bar_id, cocktail_id)
     );
 
 create policy "Users can view their own orders"
@@ -545,7 +559,21 @@ create policy "Users can create their own orders"
     to authenticated
     with check (
         auth.uid() = user_id
-        and bar_id = public.current_user_bar_id()
+        and exists (select 1 from public.bars b where b.id = bar_id)
+    );
+
+create policy "Users can insert own order_items"
+    on public.order_items for insert
+    to authenticated
+    with check (
+        exists (
+            select 1
+            from public.orders o
+            where o.id = order_id
+              and o.user_id = auth.uid()
+              and o.bar_id = bar_id
+        )
+        and public.cocktail_on_bar_menu(bar_id, cocktail_id)
     );
 
 create policy "Users can view their own order items"

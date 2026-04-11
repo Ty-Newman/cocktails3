@@ -22,9 +22,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Container,
   Switch,
   FormControlLabel,
@@ -34,11 +31,15 @@ import {
   useMediaQuery,
   useTheme,
   Stack,
+  Tabs,
+  Tab,
+  CircularProgress,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import PlaylistRemoveIcon from '@mui/icons-material/PlaylistRemove';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { supabase } from '../../services/supabase';
 import type { Ingredient, BottleSize } from '../../types/supabase';
@@ -79,10 +80,24 @@ interface FormIngredient extends CocktailIngredient {
   ingredient: Ingredient;
 }
 
+interface CatalogRow {
+  id: string;
+  name: string;
+  description: string | null;
+  bar_id: string | null;
+}
+
 export function CocktailsPage() {
   const { bar } = useBar();
   const { isSuperadmin } = useAuth();
+  const [adminTab, setAdminTab] = useState(0);
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
+  const [catalogRows, setCatalogRows] = useState<CatalogRow[]>([]);
+  /** cocktail_id -> active (present on menu) */
+  const [menuLinkActive, setMenuLinkActive] = useState<Map<string, boolean>>(() => new Map());
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState('');
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [open, setOpen] = useState(false);
   const [editingCocktail, setEditingCocktail] = useState<Cocktail | null>(null);
@@ -140,6 +155,12 @@ export function CocktailsPage() {
     void fetchCocktails();
     void fetchIngredients();
   }, [bar?.id]);
+
+  useEffect(() => {
+    if (adminTab === 1 && bar?.id) {
+      void fetchCatalog();
+    }
+  }, [adminTab, bar?.id]);
 
   const fetchCocktails = async () => {
     if (!supabase) return;
@@ -209,6 +230,173 @@ export function CocktailsPage() {
     }
 
     setIngredients(data || []);
+  };
+
+  const fetchCatalog = async () => {
+    if (!supabase || !bar?.id) return;
+    setCatalogLoading(true);
+    try {
+      const { data: links, error: linkErr } = await supabase
+        .from('bar_cocktails')
+        .select('cocktail_id, active')
+        .eq('bar_id', bar.id);
+      if (linkErr) throw linkErr;
+      const m = new Map<string, boolean>();
+      for (const row of links ?? []) {
+        m.set(row.cocktail_id as string, !!row.active);
+      }
+      setMenuLinkActive(m);
+
+      const { data, error } = await supabase
+        .from('cocktails')
+        .select('id, name, description, bar_id')
+        .or(`bar_id.is.null,bar_id.eq.${bar.id}`)
+        .order('name');
+
+      if (error) throw error;
+      setCatalogRows((data as CatalogRow[]) ?? []);
+    } catch (e) {
+      console.error('Error loading catalog:', e);
+      setSnackbar({
+        open: true,
+        message: e instanceof Error ? e.message : 'Failed to load catalog',
+        severity: 'error',
+      });
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  const setCocktailOnMenu = async (cocktailId: string, onMenu: boolean) => {
+    if (!supabase || !bar?.id) return;
+    if (onMenu) {
+      const { data: existing } = await supabase
+        .from('bar_cocktails')
+        .select('cocktail_id')
+        .eq('bar_id', bar.id)
+        .eq('cocktail_id', cocktailId)
+        .maybeSingle();
+      if (existing) {
+        const { error } = await supabase
+          .from('bar_cocktails')
+          .update({ active: true })
+          .eq('bar_id', bar.id)
+          .eq('cocktail_id', cocktailId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('bar_cocktails').insert({
+          bar_id: bar.id,
+          cocktail_id: cocktailId,
+          active: true,
+          is_featured: false,
+          sort_order: 0,
+        });
+        if (error) throw error;
+      }
+    } else {
+      const { error } = await supabase
+        .from('bar_cocktails')
+        .delete()
+        .eq('bar_id', bar.id)
+        .eq('cocktail_id', cocktailId);
+      if (error) throw error;
+    }
+  };
+
+  const handleCatalogMenuToggle = async (cocktailId: string, onMenu: boolean) => {
+    if (!supabase) return;
+    setCatalogBusy(true);
+    try {
+      await setCocktailOnMenu(cocktailId, onMenu);
+      setMenuLinkActive((prev) => {
+        const next = new Map(prev);
+        if (onMenu) next.set(cocktailId, true);
+        else next.delete(cocktailId);
+        return next;
+      });
+      void fetchCocktails();
+    } catch (e) {
+      console.error(e);
+      setSnackbar({
+        open: true,
+        message: e instanceof Error ? e.message : 'Could not update menu',
+        severity: 'error',
+      });
+    } finally {
+      setCatalogBusy(false);
+    }
+  };
+
+  const filteredCatalog = catalogRows.filter(
+    (c) =>
+      c.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+      (c.description ?? '').toLowerCase().includes(catalogSearch.toLowerCase())
+  );
+
+  const bulkAddFilteredToMenu = async () => {
+    const targets = filteredCatalog.filter((c) => menuLinkActive.get(c.id) !== true);
+    if (targets.length === 0) {
+      setSnackbar({ open: true, message: 'Nothing to add in this filter.', severity: 'info' });
+      return;
+    }
+    if (!window.confirm(`Add ${targets.length} drink(s) from this list to your menu?`)) return;
+    setCatalogBusy(true);
+    try {
+      for (const c of targets) {
+        await setCocktailOnMenu(c.id, true);
+      }
+      setMenuLinkActive((prev) => {
+        const next = new Map(prev);
+        for (const c of targets) next.set(c.id, true);
+        return next;
+      });
+      void fetchCocktails();
+      setSnackbar({ open: true, message: `Added ${targets.length} to menu.`, severity: 'success' });
+    } catch (e) {
+      setSnackbar({
+        open: true,
+        message: e instanceof Error ? e.message : 'Bulk add failed',
+        severity: 'error',
+      });
+    } finally {
+      setCatalogBusy(false);
+    }
+  };
+
+  const bulkRemoveFilteredFromMenu = async () => {
+    const targets = filteredCatalog.filter((c) => menuLinkActive.get(c.id) === true);
+    if (targets.length === 0) {
+      setSnackbar({ open: true, message: 'No drinks on menu in this filter.', severity: 'info' });
+      return;
+    }
+    if (
+      !window.confirm(
+        `Remove ${targets.length} drink(s) from your menu? (Recipes stay in the catalog.)`
+      )
+    ) {
+      return;
+    }
+    setCatalogBusy(true);
+    try {
+      for (const c of targets) {
+        await setCocktailOnMenu(c.id, false);
+      }
+      setMenuLinkActive((prev) => {
+        const next = new Map(prev);
+        for (const c of targets) next.delete(c.id);
+        return next;
+      });
+      void fetchCocktails();
+      setSnackbar({ open: true, message: `Removed ${targets.length} from menu.`, severity: 'success' });
+    } catch (e) {
+      setSnackbar({
+        open: true,
+        message: e instanceof Error ? e.message : 'Bulk remove failed',
+        severity: 'error',
+      });
+    } finally {
+      setCatalogBusy(false);
+    }
   };
 
   const handleOpen = (cocktail?: Cocktail) => {
@@ -474,17 +662,32 @@ export function CocktailsPage() {
         <Typography variant="h4" component="h1" sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>
           Cocktails
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpen()}
-          sx={{ width: { xs: '100%', sm: 'auto' } }}
-        >
-          Add Cocktail
-        </Button>
+        {adminTab === 0 && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpen()}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
+          >
+            Add Cocktail
+          </Button>
+        )}
       </Box>
 
+      <Tabs
+        value={adminTab}
+        onChange={(_, v) => setAdminTab(v)}
+        sx={{ mb: 2 }}
+        variant="scrollable"
+        scrollButtons="auto"
+      >
+        <Tab label="My menu" />
+        <Tab label="Catalog" />
+      </Tabs>
+
+      {adminTab === 0 && (
+        <>
       <TextField
         fullWidth
         variant="outlined"
@@ -620,6 +823,134 @@ export function CocktailsPage() {
           </TableContainer>
         )}
       </Paper>
+        </>
+      )}
+
+      {adminTab === 1 && (
+        <Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Shared catalog and drinks created for this bar. Turn the switch on to sell a drink here, or use bulk
+            actions for the current search filter.
+          </Typography>
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Search catalog by name or description..."
+            value={catalogSearch}
+            onChange={(e) => setCatalogSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mb: 2 }}
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<PlaylistAddIcon />}
+              onClick={() => void bulkAddFilteredToMenu()}
+              disabled={catalogBusy || catalogLoading}
+            >
+              Add filtered to menu
+            </Button>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<PlaylistRemoveIcon />}
+              onClick={() => void bulkRemoveFilteredFromMenu()}
+              disabled={catalogBusy || catalogLoading}
+            >
+              Remove filtered from menu
+            </Button>
+          </Stack>
+          <Paper sx={{ width: '100%', overflow: 'hidden', position: 'relative' }}>
+            {catalogLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : isMobile ? (
+              <Box sx={{ p: 1 }}>
+                <Stack spacing={1}>
+                  {filteredCatalog.map((row) => (
+                    <Paper key={row.id} variant="outlined" sx={{ p: 1.25 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        {row.name}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={row.bar_id == null ? 'Shared' : 'This bar'}
+                        sx={{ mt: 0.5, mr: 0.5 }}
+                      />
+                      <Box sx={{ mt: 1 }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={menuLinkActive.get(row.id) === true}
+                              disabled={catalogBusy}
+                              onChange={(_, checked) =>
+                                void handleCatalogMenuToggle(row.id, checked)
+                              }
+                            />
+                          }
+                          label="On menu"
+                        />
+                      </Box>
+                    </Paper>
+                  ))}
+                </Stack>
+              </Box>
+            ) : (
+              <TableContainer sx={{ maxHeight: 520, overflowX: 'auto' }}>
+                <Table stickyHeader size="small" aria-label="catalog table" sx={{ minWidth: 640 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Source</TableCell>
+                      <TableCell>On menu</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredCatalog.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {row.name}
+                          </Typography>
+                          {row.description && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {row.description.length > 120
+                                ? `${row.description.slice(0, 120)}…`
+                                : row.description}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={row.bar_id == null ? 'Shared catalog' : 'This bar only'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={menuLinkActive.get(row.id) === true}
+                            disabled={catalogBusy}
+                            onChange={(_, checked) =>
+                              void handleCatalogMenuToggle(row.id, checked)
+                            }
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Box>
+      )}
 
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
         <form onSubmit={handleSubmit}>
