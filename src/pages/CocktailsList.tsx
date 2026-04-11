@@ -253,7 +253,11 @@ export function CocktailsList() {
                     <Typography variant="h6" noWrap>
                       {cocktail.name}
                     </Typography>
-                    <FavoriteButton cocktailId={cocktail.id} size="small" />
+                    <FavoriteButton
+                      cocktailId={cocktail.id}
+                      cocktailCatalogBarId={cocktail.bar_id ?? null}
+                      size="small"
+                    />
                   </Box>
                   <Typography 
                     variant="body2" 

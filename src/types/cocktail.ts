@@ -4,12 +4,16 @@ export type BottleSize = '50ml' | '200ml' | '375ml' | '500ml' | '750ml' | '1L' |
 
 export interface Cocktail {
   id: string;
+  /** Null/undefined = global catalog template (`cocktails.bar_id` IS NULL). */
+  bar_id?: string | null;
   name: string;
   description: string;
   image_url?: string;
   created_at: string;
   updated_at: string;
   cost?: number;
+  /** Present on some catalog cards (pricing UI). */
+  price?: number;
   cocktail_ingredients?: CocktailIngredient[];
 }
 

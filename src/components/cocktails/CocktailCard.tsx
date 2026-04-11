@@ -1,7 +1,7 @@
 import { Card, CardContent, CardMedia, Typography, Box, Button } from '@mui/material';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
-import FavoriteButton from './FavoriteButton';
+import { FavoriteButton } from '../FavoriteButton';
 import type { Cocktail } from '../../types/cocktail';
 
 interface CocktailCardProps {
@@ -38,7 +38,8 @@ export default function CocktailCard({ cocktail, onAddToCart }: CocktailCardProp
           {user && (
             <FavoriteButton
               cocktailId={cocktail.id}
-              initialIsFavorite={false}
+              cocktailCatalogBarId={cocktail.bar_id ?? null}
+              size="small"
             />
           )}
         </Box>
@@ -48,15 +49,10 @@ export default function CocktailCard({ cocktail, onAddToCart }: CocktailCardProp
         <Typography variant="h6" color="primary" gutterBottom>
           ${cocktail.price?.toFixed(2) || '0.00'}
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          fullWidth
-          onClick={handleAddToCart}
-        >
+        <Button variant="contained" color="primary" fullWidth onClick={handleAddToCart}>
           Add to Cart
         </Button>
       </CardContent>
     </Card>
   );
-} 
+}

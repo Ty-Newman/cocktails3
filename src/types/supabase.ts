@@ -66,8 +66,8 @@ export interface CocktailIngredient {
   ingredients?: Ingredient;
 }
 
+/** @deprecated Legacy shape; use favorite_cocktails_global / favorite_cocktails_bar in DB. */
 export interface Favorite {
-  id: string;
   user_id: string;
   cocktail_id: string;
   created_at: string;

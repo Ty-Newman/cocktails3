@@ -7,10 +7,19 @@ import { useNavigate } from 'react-router-dom';
 
 interface FavoriteButtonProps {
   cocktailId: string;
+  /** `cocktails.bar_id`; null/undefined means global template (favorites sync to global list). */
+  cocktailCatalogBarId?: string | null;
   size?: 'small' | 'medium' | 'large';
+  /** Called after a successful toggle (e.g. Profile tabs reload). */
+  onFavoriteChange?: () => void;
 }
 
-export function FavoriteButton({ cocktailId, size = 'medium' }: FavoriteButtonProps) {
+export function FavoriteButton({
+  cocktailId,
+  cocktailCatalogBarId,
+  size = 'medium',
+  onFavoriteChange,
+}: FavoriteButtonProps) {
   const { isFavorite, toggleFavorite } = useFavorites();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -20,13 +29,22 @@ export function FavoriteButton({ cocktailId, size = 'medium' }: FavoriteButtonPr
       navigate('/login');
       return;
     }
-    await toggleFavorite(cocktailId);
+    await toggleFavorite(cocktailId, cocktailCatalogBarId);
+    onFavoriteChange?.();
   };
 
   return (
-    <Tooltip title={user ? (isFavorite(cocktailId) ? 'Remove from favorites' : 'Add to favorites') : 'Sign in to add favorites'}>
+    <Tooltip
+      title={
+        user
+          ? isFavorite(cocktailId)
+            ? 'Remove from favorites'
+            : 'Add to favorites'
+          : 'Sign in to add favorites'
+      }
+    >
       <IconButton
-        onClick={handleClick}
+        onClick={() => void handleClick()}
         color="primary"
         size={size}
         sx={{
@@ -44,4 +62,4 @@ export function FavoriteButton({ cocktailId, size = 'medium' }: FavoriteButtonPr
       </IconButton>
     </Tooltip>
   );
-} 
+}

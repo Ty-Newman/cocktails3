@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -9,7 +9,6 @@ import {
   Box,
   TextField,
   InputAdornment,
-  IconButton,
   Paper,
   CircularProgress,
   Chip,
@@ -21,6 +20,8 @@ import {
   DialogContent,
   DialogActions,
   Link,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
@@ -46,11 +47,14 @@ export function ProfilePage() {
   const { user, ownedBar, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const { bar } = useBar();
-  const { favorites, loading: favoritesLoading } = useFavorites();
+  const { refreshBarFavorites } = useFavorites();
   const { addToCart } = useCart();
-  const [favoriteCocktails, setFavoriteCocktails] = useState<CocktailWithCost[]>([]);
+  const [favoritesTab, setFavoritesTab] = useState(0);
+  const [globalFavoriteCocktails, setGlobalFavoriteCocktails] = useState<CocktailWithCost[]>([]);
+  const [barFavoriteCocktails, setBarFavoriteCocktails] = useState<CocktailWithCost[]>([]);
+  const [menuCocktailIds, setMenuCocktailIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loadingFavorites, setLoadingFavorites] = useState(true);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -66,71 +70,122 @@ export function ProfilePage() {
   const [createBarBusy, setCreateBarBusy] = useState(false);
   const [createBarError, setCreateBarError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (favorites.length > 0) {
-      void loadFavoriteCocktails();
-    } else {
-      setFavoriteCocktails([]);
-      setLoading(false);
+  const enrichCocktailRows = async (
+    rows: CocktailWithCost[] | null | undefined
+  ): Promise<CocktailWithCost[]> => {
+    const list = rows ?? [];
+    return Promise.all(
+      list.map(async (cocktail) => {
+        const imageData = await searchCocktailByName(cocktail.name);
+        const cost = sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []);
+        return {
+          ...cocktail,
+          image_url: imageData?.drinks?.[0]?.strDrinkThumb ?? cocktail.image_url,
+          cost,
+        };
+      })
+    );
+  };
+
+  const reloadFavoritesSection = useCallback(async () => {
+    if (!user?.id || !bar?.id) {
+      setGlobalFavoriteCocktails([]);
+      setBarFavoriteCocktails([]);
+      setMenuCocktailIds(new Set());
+      setLoadingFavorites(false);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [favorites, bar?.id]);
 
-  const loadFavoriteCocktails = async () => {
+    setLoadingFavorites(true);
     try {
-      setLoading(true);
-      const { data: menuRows, error: menuErr } = await supabase
-        .from('bar_cocktails')
-        .select('cocktail_id')
-        .eq('bar_id', bar!.id)
-        .eq('active', true);
+      await refreshBarFavorites();
+
+      const [{ data: menuRows, error: menuErr }, { data: globalRows, error: gErr }, { data: barRows, error: bErr }] =
+        await Promise.all([
+          supabase
+            .from('bar_cocktails')
+            .select('cocktail_id')
+            .eq('bar_id', bar.id)
+            .eq('active', true),
+          supabase.from('favorite_cocktails_global').select('cocktail_id').eq('user_id', user.id),
+          supabase
+            .from('favorite_cocktails_bar')
+            .select('cocktail_id')
+            .eq('user_id', user.id)
+            .eq('bar_id', bar.id),
+        ]);
+
       if (menuErr) throw menuErr;
+      if (gErr) throw gErr;
+      if (bErr) throw bErr;
+
       const onMenu = new Set((menuRows ?? []).map((r) => r.cocktail_id as string));
-      const ids = favorites.filter((id) => onMenu.has(id));
-      if (ids.length === 0) {
-        setFavoriteCocktails([]);
-        return;
-      }
+      setMenuCocktailIds(onMenu);
 
-      const { data, error } = await supabase
-        .from('cocktails')
-        .select(`
-          *,
-          cocktail_ingredients (
-            amount,
-            unit,
-            ingredients (
+      const globalIds = [...new Set((globalRows ?? []).map((r) => r.cocktail_id as string))];
+      const barIds = [...new Set((barRows ?? []).map((r) => r.cocktail_id as string))];
+
+      const fetchByIds = async (ids: string[]) => {
+        if (ids.length === 0) return [];
+        const { data, error } = await supabase
+          .from('cocktails')
+          .select(`
+            *,
+            cocktail_ingredients (
               id,
-              name,
-              price_per_ounce,
-              price,
-              bottle_size,
-              type
+              amount,
+              unit,
+              ingredients (
+                id,
+                name,
+                price_per_ounce,
+                price,
+                bottle_size,
+                type
+              )
             )
-          )
-        `)
-        .in('id', ids);
+          `)
+          .in('id', ids);
+        if (error) throw error;
+        return enrichCocktailRows(data as CocktailWithCost[]);
+      };
 
-      if (error) throw error;
+      const [globalEnriched, barEnriched] = await Promise.all([
+        fetchByIds(globalIds),
+        fetchByIds(barIds),
+      ]);
 
-      // Process cocktails with images from CocktailDB and calculate costs
-      const processedCocktails = await Promise.all(
-        (data || []).map(async (cocktail) => {
-          const imageData = await searchCocktailByName(cocktail.name);
-          const cost = sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []);
-          return {
-            ...cocktail,
-            image_url: imageData?.drinks?.[0]?.strDrinkThumb,
-            cost
-          };
-        })
-      );
-
-      setFavoriteCocktails(processedCocktails);
+      setGlobalFavoriteCocktails(globalEnriched);
+      setBarFavoriteCocktails(barEnriched);
     } catch (error) {
       console.error('Error loading favorite cocktails:', error);
     } finally {
-      setLoading(false);
+      setLoadingFavorites(false);
+    }
+  }, [user?.id, bar?.id, refreshBarFavorites]);
+
+  useEffect(() => {
+    if (user && bar?.id) {
+      void reloadFavoritesSection();
+    }
+  }, [user, bar?.id, reloadFavoritesSection]);
+
+  const removeFromSavedEverywhere = async (cocktailId: string) => {
+    if (!user?.id) return;
+    try {
+      await supabase
+        .from('favorite_cocktails_global')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('cocktail_id', cocktailId);
+      await supabase
+        .from('favorite_cocktails_bar')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('cocktail_id', cocktailId);
+      await reloadFavoritesSection();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -208,7 +263,9 @@ export function ProfilePage() {
     }
   };
 
-  const filteredCocktails = favoriteCocktails.filter(cocktail =>
+  const activeFavoriteList =
+    favoritesTab === 0 ? globalFavoriteCocktails : barFavoriteCocktails;
+  const filteredCocktails = activeFavoriteList.filter((cocktail) =>
     cocktail.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -300,8 +357,20 @@ export function ProfilePage() {
 
       <Box sx={{ mb: 4 }}>
         <Typography variant="h6" gutterBottom>
-          Favorite Cocktails
+          Favorite cocktails
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <strong>All favorites</strong> are recipes you saved (global catalog).{' '}
+          <strong>At this bar</strong> are drinks you favorited while browsing this venue&apos;s menu.
+        </Typography>
+        <Tabs
+          value={favoritesTab}
+          onChange={(_, v) => setFavoritesTab(v)}
+          sx={{ mb: 2 }}
+        >
+          <Tab label="All favorites" />
+          <Tab label={bar?.name ? `At ${bar.name}` : 'At this bar'} />
+        </Tabs>
         <TextField
           fullWidth
           variant="outlined"
@@ -318,7 +387,7 @@ export function ProfilePage() {
           }}
         />
 
-        {loading || favoritesLoading ? (
+        {loadingFavorites ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
           </Box>
@@ -327,7 +396,9 @@ export function ProfilePage() {
             <Typography color="text.secondary">
               {searchQuery
                 ? 'No matching favorites found'
-                : 'You haven\'t added any favorites yet'}
+                : favoritesTab === 0
+                  ? 'No saved favorites yet — heart drinks on a menu to add them here.'
+                  : 'No favorites at this bar yet — open this bar’s menu and tap the heart on drinks you like.'}
             </Typography>
           </Paper>
         ) : (
@@ -361,11 +432,26 @@ export function ProfilePage() {
                     flexDirection: 'column',
                     '&:last-child': { pb: 2 }
                   }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                      <Typography variant="h6" noWrap>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 1 }}>
+                      <Typography variant="h6" noWrap sx={{ flex: 1 }}>
                         {cocktail.name}
                       </Typography>
-                      <FavoriteButton cocktailId={cocktail.id} size="small" />
+                      {favoritesTab === 0 ? (
+                        <Button
+                          size="small"
+                          color="inherit"
+                          onClick={() => void removeFromSavedEverywhere(cocktail.id)}
+                        >
+                          Remove
+                        </Button>
+                      ) : (
+                        <FavoriteButton
+                          cocktailId={cocktail.id}
+                          cocktailCatalogBarId={cocktail.bar_id ?? null}
+                          size="small"
+                          onFavoriteChange={() => void reloadFavoritesSection()}
+                        />
+                      )}
                     </Box>
                     <Typography 
                       variant="body2" 
@@ -429,9 +515,12 @@ export function ProfilePage() {
                       startIcon={<AddShoppingCartIcon />}
                       onClick={() => handleAddToCart(cocktail)}
                       fullWidth
+                      disabled={!menuCocktailIds.has(cocktail.id)}
                       sx={{ mt: 'auto' }}
                     >
-                      Add to Cart
+                      {menuCocktailIds.has(cocktail.id)
+                        ? 'Add to Cart'
+                        : 'Not on this bar’s menu'}
                     </Button>
                   </CardContent>
                 </Card>

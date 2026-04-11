@@ -1,5 +1,5 @@
 -- Reference schema for local documentation and greenfield resets.
--- Matches migrations through 20250414100000_bar_invite_links.sql
+-- Matches migrations through 20250415120000_phase6_global_bar_favorites.sql
 -- (+ bar_invite_links, accept_bar_invite; prior: bar_members, bar_cocktails, menu RLS, superadmin).
 -- Requires Supabase auth (auth.users). Seed default bar before any row that references bars.
 
@@ -206,20 +206,27 @@ create table public.cocktail_ingredients (
 create index idx_cocktail_ingredients_bar_id on public.cocktail_ingredients (bar_id);
 
 -- -----------------------------------------------------------------------------
--- favorites, cart
+-- favorites (global canonical + per-bar menu context)
 -- -----------------------------------------------------------------------------
-create table public.favorites (
-    id uuid default uuid_generate_v4() primary key,
-    bar_id uuid not null
-        references public.bars (id)
-        default 'a0000000-0000-4000-8000-000000000001'::uuid,
-    user_id uuid references public.profiles on delete cascade not null,
-    cocktail_id uuid references public.cocktails on delete cascade not null,
+create table public.favorite_cocktails_global (
+    user_id uuid not null references public.profiles (id) on delete cascade,
+    cocktail_id uuid not null references public.cocktails (id) on delete cascade,
     created_at timestamptz not null default timezone('utc'::text, now()),
-    constraint favorites_bar_id_user_id_cocktail_id_key unique (bar_id, user_id, cocktail_id)
+    primary key (user_id, cocktail_id)
 );
 
-create index idx_favorites_bar_id on public.favorites (bar_id);
+create index idx_favorite_cocktails_global_user_id on public.favorite_cocktails_global (user_id);
+create index idx_favorite_cocktails_global_cocktail_id on public.favorite_cocktails_global (cocktail_id);
+
+create table public.favorite_cocktails_bar (
+    user_id uuid not null references public.profiles (id) on delete cascade,
+    bar_id uuid not null references public.bars (id) on delete cascade,
+    cocktail_id uuid not null references public.cocktails (id) on delete cascade,
+    created_at timestamptz not null default timezone('utc'::text, now()),
+    primary key (user_id, bar_id, cocktail_id)
+);
+
+create index idx_favorite_cocktails_bar_user_bar on public.favorite_cocktails_bar (user_id, bar_id);
 
 create table public.cart (
     id uuid default uuid_generate_v4() primary key,
@@ -365,7 +372,8 @@ alter table public.profiles enable row level security;
 alter table public.ingredients enable row level security;
 alter table public.cocktails enable row level security;
 alter table public.cocktail_ingredients enable row level security;
-alter table public.favorites enable row level security;
+alter table public.favorite_cocktails_global enable row level security;
+alter table public.favorite_cocktails_bar enable row level security;
 alter table public.cart enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
@@ -546,13 +554,22 @@ create policy "Bar admins manage bar_cocktails"
     using (public.user_can_admin_bar(bar_id))
     with check (public.user_can_admin_bar(bar_id));
 
-create policy "Users can view their own favorites"
-    on public.favorites for select
+create policy "Users manage own global favorites"
+    on public.favorite_cocktails_global for all
     to authenticated
-    using (auth.uid() = user_id);
+    using (auth.uid() = user_id)
+    with check (
+        auth.uid() = user_id
+        and exists (
+            select 1
+            from public.cocktails c
+            where c.id = cocktail_id
+              and c.bar_id is null
+        )
+    );
 
-create policy "Users can manage their own favorites"
-    on public.favorites for all
+create policy "Users manage own bar favorites"
+    on public.favorite_cocktails_bar for all
     to authenticated
     using (auth.uid() = user_id)
     with check (

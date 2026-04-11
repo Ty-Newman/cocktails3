@@ -1,15 +1,37 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
 interface FavoritesContextType {
   favorites: string[];
   isFavorite: (cocktailId: string) => boolean;
-  toggleFavorite: (cocktailId: string) => Promise<void>;
+  toggleFavorite: (
+    cocktailId: string,
+    cocktailCatalogBarId?: string | null
+  ) => Promise<void>;
   loading: boolean;
+  refreshBarFavorites: () => Promise<void>;
 }
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
+
+async function fetchCocktailCatalogBarId(cocktailId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('cocktails')
+    .select('bar_id')
+    .eq('id', cocktailId)
+    .maybeSingle();
+  if (error) {
+    console.error('fetchCocktailCatalogBarId:', error);
+    return null;
+  }
+  const v = data?.bar_id;
+  return v == null ? null : String(v);
+}
+
+function isGlobalTemplate(catalogBarId: string | null | undefined): boolean {
+  return catalogBarId == null || catalogBarId === '';
+}
 
 export function FavoritesProvider({
   children,
@@ -22,63 +44,97 @@ export function FavoritesProvider({
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (user) {
-      void loadFavorites();
-    } else {
-      setFavorites([]);
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when user or tenant changes
-  }, [user, barId]);
-
-  const loadFavorites = async () => {
+  const loadBarFavorites = useCallback(async () => {
     if (!user) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('favorites')
+        .from('favorite_cocktails_bar')
         .select('cocktail_id')
         .eq('user_id', user.id)
         .eq('bar_id', barId);
 
       if (error) throw error;
 
-      setFavorites((data ?? []).map(fav => fav.cocktail_id));
+      setFavorites((data ?? []).map((row) => row.cocktail_id as string));
     } catch (error) {
       console.error('Error loading favorites:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, barId]);
 
-  const isFavorite = (cocktailId: string) => {
-    return favorites.includes(cocktailId);
-  };
+  useEffect(() => {
+    if (user) {
+      void loadBarFavorites();
+    } else {
+      setFavorites([]);
+      setLoading(false);
+    }
+  }, [user, barId, loadBarFavorites]);
 
-  const toggleFavorite = async (cocktailId: string) => {
+  const isFavorite = (cocktailId: string) => favorites.includes(cocktailId);
+
+  const toggleFavorite = async (
+    cocktailId: string,
+    cocktailCatalogBarId?: string | null
+  ) => {
     if (!user) return;
+
+    let catalogBarId = cocktailCatalogBarId;
+    if (catalogBarId === undefined) {
+      catalogBarId = await fetchCocktailCatalogBarId(cocktailId);
+    }
+    const globalTemplate = isGlobalTemplate(catalogBarId);
 
     try {
       if (isFavorite(cocktailId)) {
-        const { error } = await supabase
-          .from('favorites')
+        const { error: delBar } = await supabase
+          .from('favorite_cocktails_bar')
           .delete()
           .eq('user_id', user.id)
-          .eq('cocktail_id', cocktailId)
-          .eq('bar_id', barId);
+          .eq('bar_id', barId)
+          .eq('cocktail_id', cocktailId);
 
-        if (error) throw error;
+        if (delBar) throw delBar;
 
-        setFavorites(favorites.filter(id => id !== cocktailId));
+        if (globalTemplate) {
+          const { error: delG } = await supabase
+            .from('favorite_cocktails_global')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('cocktail_id', cocktailId);
+          if (delG) throw delG;
+        }
+
+        setFavorites((prev) => prev.filter((id) => id !== cocktailId));
       } else {
-        const { error } = await supabase
-          .from('favorites')
-          .insert([{ user_id: user.id, cocktail_id: cocktailId, bar_id: barId }]);
+        if (globalTemplate) {
+          const { error: upG } = await supabase.from('favorite_cocktails_global').upsert(
+            { user_id: user.id, cocktail_id: cocktailId },
+            { onConflict: 'user_id,cocktail_id' }
+          );
+          if (upG) throw upG;
+        }
 
-        if (error) throw error;
+        const { error: insB } = await supabase.from('favorite_cocktails_bar').insert({
+          user_id: user.id,
+          bar_id: barId,
+          cocktail_id: cocktailId,
+        });
 
-        setFavorites([...favorites, cocktailId]);
+        if (insB) {
+          if (globalTemplate) {
+            await supabase
+              .from('favorite_cocktails_global')
+              .delete()
+              .eq('user_id', user.id)
+              .eq('cocktail_id', cocktailId);
+          }
+          throw insB;
+        }
+
+        setFavorites((prev) => (prev.includes(cocktailId) ? prev : [...prev, cocktailId]));
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -91,7 +147,8 @@ export function FavoritesProvider({
         favorites,
         isFavorite,
         toggleFavorite,
-        loading
+        loading,
+        refreshBarFavorites: loadBarFavorites,
       }}
     >
       {children}
