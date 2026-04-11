@@ -5,9 +5,12 @@ import { Box, CircularProgress } from '@mui/material';
 import { DEFAULT_BAR_SLUG } from '../constants/bars';
 import { barPath } from '../utils/barPaths';
 import { consumeRegistrationIntent } from '../utils/registrationIntent';
+import { consumeBarInviteToken } from '../utils/barInviteToken';
+import { useAuth } from '../contexts/AuthContext';
 
 export function AuthCallback() {
   const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
 
   useEffect(() => {
     const handleAuthCallback = async () => {
@@ -19,6 +22,24 @@ export function AuthCallback() {
         }
 
         if (session) {
+          const inviteToken = consumeBarInviteToken();
+          if (inviteToken) {
+            const { data: inviteResult, error: inviteErr } = await supabase.rpc('accept_bar_invite', {
+              p_token: inviteToken,
+            });
+            if (inviteErr) {
+              console.error('accept_bar_invite:', inviteErr);
+            } else if (
+              inviteResult &&
+              typeof inviteResult === 'object' &&
+              'ok' in inviteResult &&
+              (inviteResult as { ok?: boolean }).ok === false
+            ) {
+              const ir = inviteResult as { error?: string };
+              console.warn('accept_bar_invite:', ir.error, inviteResult);
+            }
+          }
+
           const intent = consumeRegistrationIntent();
 
           const rpcPayload = {
@@ -50,6 +71,8 @@ export function AuthCallback() {
             }
           }
 
+          await refreshProfile();
+
           const { data: profile } = await supabase
             .from('profiles')
             .select('bar_id')
@@ -78,6 +101,8 @@ export function AuthCallback() {
     };
 
     void handleAuthCallback();
+    // refreshProfile intentionally omitted — not referentially stable from context
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
   return (

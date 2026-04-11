@@ -18,6 +18,7 @@ import {
   normalizeBarSlugInput,
 } from '../utils/registrationIntent';
 import { defaultBarHome } from '../utils/barPaths';
+import { peekBarInviteToken } from '../utils/barInviteToken';
 
 export function Login() {
   const { signInWithGoogle, signInWithDiscord } = useAuth();
@@ -29,6 +30,7 @@ export function Login() {
   const [ownerBarName, setOwnerBarName] = useState('');
   const [ownerBarSlug, setOwnerBarSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const pendingBarInvite = !intentOwner && !!peekBarInviteToken();
 
   useEffect(() => {
     if (joinBarSlug && !intentOwner) {
@@ -115,6 +117,13 @@ export function Login() {
             charged without choosing to upgrade.
           </Typography>
         </>
+      )}
+
+      {pendingBarInvite && (
+        <Alert severity="info">
+          You opened a bar invite link. After you sign in, we will add you to that bar as a patron
+          (and set it as your home bar if you are still on the default bar).
+        </Alert>
       )}
 
       {!intentOwner && joinBarSlug && (

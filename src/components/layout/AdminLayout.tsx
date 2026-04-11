@@ -22,7 +22,8 @@ import {
   Inventory as InventoryIcon,
   People as PeopleIcon,
   ShoppingCart as OrdersIcon,
-  Home as HomeIcon
+  Home as HomeIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
 
@@ -45,6 +46,7 @@ export function AdminLayout() {
     { text: 'Cocktails', icon: <CocktailIcon />, path: barPath(slug, 'admin', 'cocktails') },
     { text: 'Ingredients', icon: <InventoryIcon />, path: barPath(slug, 'admin', 'ingredients') },
     { text: 'Users', icon: <PeopleIcon />, path: barPath(slug, 'admin', 'users') },
+    { text: 'Invites', icon: <LinkIcon />, path: barPath(slug, 'admin', 'invites') },
     { text: 'Orders', icon: <OrdersIcon />, path: barPath(slug, 'admin', 'orders') }
   ];
 

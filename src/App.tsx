@@ -17,6 +17,8 @@ import { ProfilePage } from './pages/ProfilePage';
 import { TenantLayout } from './components/layout/TenantLayout';
 import { DEFAULT_BAR_SLUG } from './constants/bars';
 import { barPath, defaultBarHome } from './utils/barPaths';
+import { JoinInvitePage } from './pages/JoinInvitePage';
+import { InvitesPage } from './pages/admin/InvitesPage';
 
 const theme = createTheme({
   palette: {
@@ -64,6 +66,7 @@ function AppRoutes() {
         element={<Navigate to="/login?intent=owner" replace />}
       />
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/join/:token" element={<JoinInvitePage />} />
       <Route path="/" element={<Navigate to={defaultBarHome()} replace />} />
       <Route path="/:barSlug" element={<TenantLayout />}>
         <Route index element={<HomePage />} />
@@ -83,6 +86,7 @@ function AppRoutes() {
           <Route path="cocktails" element={<CocktailsPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="invites" element={<InvitesPage />} />
         </Route>
       </Route>
     </Routes>
