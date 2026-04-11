@@ -13,6 +13,8 @@ import {
   CircularProgress,
   Chip,
   Button,
+  FormControlLabel,
+  Switch,
   Snackbar,
   Alert,
   Dialog,
@@ -44,7 +46,7 @@ import {
 type CocktailWithCost = Cocktail & { cost?: number };
 
 export function ProfilePage() {
-  const { user, ownedBar, refreshProfile } = useAuth();
+  const { user, ownedBar, refreshProfile, profile } = useAuth();
   const navigate = useNavigate();
   const { bar } = useBar();
   const { refreshBarFavorites } = useFavorites();
@@ -69,6 +71,8 @@ export function ProfilePage() {
   const [createBarSlug, setCreateBarSlug] = useState('');
   const [createBarBusy, setCreateBarBusy] = useState(false);
   const [createBarError, setCreateBarError] = useState<string | null>(null);
+  const [notifyBarOpenEmail, setNotifyBarOpenEmail] = useState(true);
+  const [notifyPrefSaving, setNotifyPrefSaving] = useState(false);
 
   const enrichCocktailRows = async (
     rows: CocktailWithCost[] | null | undefined
@@ -172,6 +176,32 @@ export function ProfilePage() {
       void reloadFavoritesSection();
     }
   }, [user, bar?.id, reloadFavoritesSection]);
+
+  useEffect(() => {
+    if (profile?.notify_bar_open_email !== undefined) {
+      setNotifyBarOpenEmail(profile.notify_bar_open_email);
+    }
+  }, [profile?.notify_bar_open_email]);
+
+  const handleNotifyBarOpenEmailChange = async (_: unknown, checked: boolean) => {
+    if (!user?.id) return;
+    setNotifyPrefSaving(true);
+    setNotifyBarOpenEmail(checked);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ notify_bar_open_email: checked })
+        .eq('id', user.id);
+      if (error) throw error;
+      await refreshProfile();
+    } catch (e) {
+      console.error(e);
+      setNotifyBarOpenEmail(!checked);
+      setSnackbar({ open: true, message: 'Could not update notification setting.' });
+    } finally {
+      setNotifyPrefSaving(false);
+    }
+  };
 
   const removeFromSavedEverywhere = async (cocktailId: string) => {
     if (!user?.id) return;
@@ -323,6 +353,26 @@ export function ProfilePage() {
           </Button>
         </Paper>
       )}
+
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Typography variant="subtitle1" gutterBottom>
+          Notifications
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Bar-open alerts are sent by email when a venue you belong to as a patron turns on
+          &quot;Bar is open.&quot; You can turn this off anytime.
+        </Typography>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={notifyBarOpenEmail}
+              onChange={(_, c) => void handleNotifyBarOpenEmailChange(_, c)}
+              disabled={notifyPrefSaving}
+            />
+          }
+          label="Email me when a bar I’m a patron of opens"
+        />
+      </Paper>
 
       <Dialog
         open={createBarOpen}

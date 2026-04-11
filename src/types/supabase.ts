@@ -25,6 +25,8 @@ export interface Profile {
   id: string;
   role: UserRole;
   bar_id: string;
+  /** Default true; user can opt out in profile settings. */
+  notify_bar_open_email?: boolean;
   created_at: string;
   updated_at: string;
 }

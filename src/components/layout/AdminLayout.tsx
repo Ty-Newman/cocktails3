@@ -26,6 +26,7 @@ import {
   Link as LinkIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
+import { BarOpenToggle } from '../admin/BarOpenToggle';
 
 const drawerWidth = 240;
 
@@ -147,6 +148,7 @@ export function AdminLayout() {
           }}
         >
           <Paper sx={{ p: { xs: 1.5, sm: 3 }, overflowX: 'hidden' }}>
+            <BarOpenToggle />
             <Outlet />
           </Paper>
         </Container>
