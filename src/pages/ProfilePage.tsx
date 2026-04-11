@@ -11,12 +11,16 @@ import {
   InputAdornment,
   IconButton,
   Paper,
-  Divider,
   CircularProgress,
   Chip,
   Button,
   Snackbar,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Link,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
@@ -25,79 +29,26 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFavorites } from '../contexts/FavoritesContext';
 import { useCart } from '../contexts/CartContext';
 import { FavoriteButton } from '../components/FavoriteButton';
-import type { Cocktail, IngredientType, BottleSize } from '../types/cocktail';
+import type { Cocktail } from '../types/cocktail';
 import { searchCocktailByName } from '../services/cocktailDB';
+import { useBar } from '../contexts/BarContext';
+import { sumCocktailIngredientCosts } from '../utils/cocktailCost';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { barPath } from '../utils/barPaths';
+import {
+  BAR_SLUG_PATTERN,
+  normalizeBarSlugInput,
+} from '../utils/registrationIntent';
 
-// Add the bottle size to ml mapping
-const bottleSizeToMl: Record<BottleSize, number> = {
-  '50ml': 50,
-  '200ml': 200,
-  '375ml': 375,
-  '500ml': 500,
-  '750ml': 750,
-  '1L': 1000,
-  '1.75L': 1750
-};
-
-// Add the price calculation function
-const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize | null, type: IngredientType): number | null => {
-  if (price === null || bottleSize === null) return null;
-  
-  if (type === 'bitters') {
-    // Average bitters bottle has about 200 dashes
-    const dashesPerBottle = 200;
-    return price / dashesPerBottle;
-  }
-  
-  const mlInBottle = bottleSizeToMl[bottleSize];
-  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
-  return (price * mlPerOunce) / mlInBottle;
-};
-
-// Add function to calculate cocktail cost
-const calculateCocktailCost = (ingredients: any[]): number => {
-  if (!ingredients || ingredients.length === 0) return 0;
-
-  return ingredients.reduce((total, ingredient) => {
-    if (!ingredient.ingredients || !ingredient.amount) return total;
-
-    const price = ingredient.ingredients.price;
-    if (price === null) return total;
-
-    const pricePerUnit = calculatePricePerOunce(
-      price,
-      ingredient.ingredients.bottle_size,
-      ingredient.ingredients.type
-    );
-
-    // For items without bottle size (garnishes, non-bottled items)
-    if (pricePerUnit === null) {
-      return total + (price * ingredient.amount);
-    }
-
-    // For bottled items, calculate based on amount and unit
-    const amount = ingredient.amount;
-    const unit = ingredient.unit.toLowerCase();
-    
-    if (unit === 'dash' && ingredient.ingredients.type === 'bitters') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'ml') {
-      // Convert ml to oz for calculation
-      const mlPerOunce = 29.5735;
-      return total + (pricePerUnit * (amount / mlPerOunce));
-    }
-
-    return total;
-  }, 0);
-};
+type CocktailWithCost = Cocktail & { cost?: number };
 
 export function ProfilePage() {
-  const { user } = useAuth();
+  const { user, ownedBar, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+  const { bar } = useBar();
   const { favorites, loading: favoritesLoading } = useFavorites();
   const { addToCart } = useCart();
-  const [favoriteCocktails, setFavoriteCocktails] = useState<Cocktail[]>([]);
+  const [favoriteCocktails, setFavoriteCocktails] = useState<CocktailWithCost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
@@ -109,18 +60,38 @@ export function ProfilePage() {
     message: ''
   });
 
+  const [createBarOpen, setCreateBarOpen] = useState(false);
+  const [createBarName, setCreateBarName] = useState('');
+  const [createBarSlug, setCreateBarSlug] = useState('');
+  const [createBarBusy, setCreateBarBusy] = useState(false);
+  const [createBarError, setCreateBarError] = useState<string | null>(null);
+
   useEffect(() => {
     if (favorites.length > 0) {
-      loadFavoriteCocktails();
+      void loadFavoriteCocktails();
     } else {
       setFavoriteCocktails([]);
       setLoading(false);
     }
-  }, [favorites]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [favorites, bar?.id]);
 
   const loadFavoriteCocktails = async () => {
     try {
       setLoading(true);
+      const { data: menuRows, error: menuErr } = await supabase
+        .from('bar_cocktails')
+        .select('cocktail_id')
+        .eq('bar_id', bar!.id)
+        .eq('active', true);
+      if (menuErr) throw menuErr;
+      const onMenu = new Set((menuRows ?? []).map((r) => r.cocktail_id as string));
+      const ids = favorites.filter((id) => onMenu.has(id));
+      if (ids.length === 0) {
+        setFavoriteCocktails([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('cocktails')
         .select(`
@@ -131,13 +102,14 @@ export function ProfilePage() {
             ingredients (
               id,
               name,
+              price_per_ounce,
               price,
               bottle_size,
               type
             )
           )
         `)
-        .in('id', favorites);
+        .in('id', ids);
 
       if (error) throw error;
 
@@ -145,7 +117,7 @@ export function ProfilePage() {
       const processedCocktails = await Promise.all(
         (data || []).map(async (cocktail) => {
           const imageData = await searchCocktailByName(cocktail.name);
-          const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);
+          const cost = sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []);
           return {
             ...cocktail,
             image_url: imageData?.drinks?.[0]?.strDrinkThumb,
@@ -169,7 +141,7 @@ export function ProfilePage() {
     }));
   };
 
-  const handleAddToCart = (cocktail: Cocktail) => {
+  const handleAddToCart = (cocktail: CocktailWithCost) => {
     addToCart({
       id: cocktail.id,
       name: cocktail.name,
@@ -184,6 +156,56 @@ export function ProfilePage() {
 
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const handleCreateBar = async () => {
+    setCreateBarError(null);
+    const name = createBarName.trim();
+    const slug = normalizeBarSlugInput(createBarSlug);
+    if (!name) {
+      setCreateBarError('Enter a name for your bar.');
+      return;
+    }
+    if (!slug || slug.length < 2 || !BAR_SLUG_PATTERN.test(slug)) {
+      setCreateBarError(
+        'URL slug must be 2–40 characters: lowercase letters, numbers, and hyphens only.'
+      );
+      return;
+    }
+    setCreateBarBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('complete_oauth_registration', {
+        p_join_bar_slug: null,
+        p_create_bar: true,
+        p_bar_name: name,
+        p_bar_slug: slug,
+      });
+      if (error) throw error;
+      const r = data as { ok?: boolean; error?: string; bar_slug?: string };
+      if (r?.ok === false) {
+        setCreateBarError(
+          r.error === 'slug_taken'
+            ? 'That URL is already taken. Try another slug.'
+            : r.error === 'already_own_bar'
+              ? 'You already have a bar.'
+              : r.error === 'reserved_slug'
+                ? 'That URL is reserved. Try another slug.'
+                : r.error ?? 'Could not create bar.'
+        );
+        return;
+      }
+      await refreshProfile();
+      setCreateBarOpen(false);
+      setCreateBarName('');
+      setCreateBarSlug('');
+      const newSlug = r?.bar_slug ?? slug;
+      navigate(barPath(newSlug), { replace: true });
+    } catch (e) {
+      console.error(e);
+      setCreateBarError(e instanceof Error ? e.message : 'Something went wrong.');
+    } finally {
+      setCreateBarBusy(false);
+    }
   };
 
   const filteredCocktails = favoriteCocktails.filter(cocktail =>
@@ -210,6 +232,71 @@ export function ProfilePage() {
       <Typography variant="h4" gutterBottom>
         Your Profile
       </Typography>
+
+      {ownedBar ? (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Your bar
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            You manage{' '}
+            <Link component={RouterLink} to={barPath(ownedBar.slug)}>
+              {ownedBar.name}
+            </Link>{' '}
+            <Typography component="span" variant="body2" color="text.disabled">
+              /{ownedBar.slug}
+            </Typography>
+          </Typography>
+        </Paper>
+      ) : (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Your own bar (optional)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Open a free venue page with its own menu and admin tools. You can stay on this bar as a
+            guest forever—this is only if you want to run a separate space. Paid upgrades may be
+            offered later; you will not be charged without opting in.
+          </Typography>
+          <Button variant="outlined" onClick={() => setCreateBarOpen(true)}>
+            Create my bar
+          </Button>
+        </Paper>
+      )}
+
+      <Dialog
+        open={createBarOpen}
+        onClose={() => !createBarBusy && setCreateBarOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Create your bar</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          {createBarError && <Alert severity="error">{createBarError}</Alert>}
+          <TextField
+            label="Bar / venue name"
+            value={createBarName}
+            onChange={(e) => setCreateBarName(e.target.value)}
+            fullWidth
+            autoFocus
+          />
+          <TextField
+            label="URL slug"
+            value={createBarSlug}
+            onChange={(e) => setCreateBarSlug(normalizeBarSlugInput(e.target.value))}
+            fullWidth
+            helperText={`${window.location.origin}/your-slug`}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateBarOpen(false)} disabled={createBarBusy}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={() => void handleCreateBar()} disabled={createBarBusy}>
+            {createBarBusy ? 'Creating…' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Box sx={{ mb: 4 }}>
         <Typography variant="h6" gutterBottom>

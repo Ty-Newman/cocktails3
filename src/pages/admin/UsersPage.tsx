@@ -27,19 +27,29 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { useBar } from '../../contexts/BarContext';
+import { useAuth } from '../../contexts/AuthContext';
+import type { BarMemberRole } from '../../types/supabase';
 
 interface User {
-  id: string;
-  role: 'user' | 'admin';
+  user_id: string;
+  role: BarMemberRole;
   created_at: string;
-  updated_at: string;
+  profiles: {
+    id: string;
+    bar_id: string;
+    created_at: string;
+    updated_at: string;
+  } | null;
 }
 
 interface FormData {
-  role: 'user' | 'admin';
+  role: BarMemberRole;
 }
 
 export function UsersPage() {
+  const { bar } = useBar();
+  const { canAdminBar } = useAuth();
   const { supabase } = useSupabase();
   const [users, setUsers] = useState<User[]>([]);
   const [open, setOpen] = useState(false);
@@ -58,12 +68,12 @@ export function UsersPage() {
   });
 
   const [formData, setFormData] = useState<FormData>({
-    role: 'user'
+    role: 'patron'
   });
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    void fetchUsers();
+  }, [bar?.id]);
 
   const fetchUsers = async () => {
     if (!supabase) {
@@ -89,30 +99,20 @@ export function UsersPage() {
         return;
       }
 
-      // First, check if we're actually an admin
-      const { data: currentUser, error: userError } = await supabase
-        .from('profiles')
-        .select('id, role')
-        .eq('id', session.user.id)
-        .single();
-
-      console.log('Current user check:', { currentUser, userError });
-
-      if (userError) {
-        console.error('Error checking current user:', userError);
-        throw userError;
-      }
-
-      if (!currentUser || currentUser.role !== 'admin') {
-        console.error('Current user is not an admin:', currentUser);
-        setError('You must be an admin to view this page');
+      if (!canAdminBar(bar?.id)) {
+        setError('You do not have admin access for this bar.');
         return;
       }
 
-      // Now fetch all users
       const { data, error, status, statusText } = await supabase
-        .from('profiles')
-        .select('id, role, created_at, updated_at')
+        .from('bar_members')
+        .select(`
+          user_id,
+          role,
+          created_at,
+          profiles ( id, bar_id, created_at, updated_at )
+        `)
+        .eq('bar_id', bar!.id)
         .order('created_at', { ascending: false });
 
       console.log('Response:', { data, error, status, statusText });
@@ -123,7 +123,7 @@ export function UsersPage() {
       }
       
       console.log('Users fetched:', data);
-      setUsers(data || []);
+      setUsers((data as User[]) || []);
     } catch (error) {
       console.error('Error fetching users:', error);
       setError(error instanceof Error ? error.message : 'Error fetching users');
@@ -139,7 +139,7 @@ export function UsersPage() {
     } else {
       setEditingUser(null);
       setFormData({
-        role: 'user'
+        role: 'patron'
       });
     }
     setOpen(true);
@@ -149,7 +149,7 @@ export function UsersPage() {
     setOpen(false);
     setEditingUser(null);
     setFormData({
-      role: 'user'
+      role: 'patron'
     });
   };
 
@@ -159,18 +159,19 @@ export function UsersPage() {
 
     try {
       if (editingUser) {
+        if (editingUser.role === 'owner' && formData.role !== 'owner') {
+          throw new Error('Cannot change the venue owner role from this screen.');
+        }
         const { error } = await supabase
-          .from('profiles')
-          .update({
-            role: formData.role,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingUser.id);
+          .from('bar_members')
+          .update({ role: formData.role })
+          .eq('bar_id', bar!.id)
+          .eq('user_id', editingUser.user_id);
 
         if (error) throw error;
         setSnackbar({
           open: true,
-          message: 'User updated successfully',
+          message: 'Member updated successfully',
           severity: 'success'
         });
       }
@@ -191,15 +192,20 @@ export function UsersPage() {
     if (!supabase) return;
 
     try {
+      const member = users.find((u) => u.user_id === userId);
+      if (member?.role === 'owner') {
+        throw new Error('Cannot remove the venue owner.');
+      }
       const { error } = await supabase
-        .from('profiles')
+        .from('bar_members')
         .delete()
-        .eq('id', userId);
+        .eq('bar_id', bar!.id)
+        .eq('user_id', userId);
 
       if (error) throw error;
       setSnackbar({
         open: true,
-        message: 'User deleted successfully',
+        message: 'Member removed from this bar',
         severity: 'success'
       });
       fetchUsers();
@@ -273,16 +279,16 @@ export function UsersPage() {
               <Stack spacing={1}>
                 {users.map((user) => (
                   <Paper
-                    key={user.id}
+                    key={user.user_id}
                     variant="outlined"
                     sx={{ p: 1.25, display: 'flex', gap: 1, alignItems: 'flex-start' }}
                   >
                     <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                       <Typography variant="subtitle2" color="text.secondary">
-                        ID
+                        User ID
                       </Typography>
                       <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                        {user.id}
+                        {user.user_id}
                       </Typography>
                       <Typography variant="body2" sx={{ mt: 0.75 }}>
                         <Box component="span" sx={{ color: 'text.secondary' }}>
@@ -305,9 +311,10 @@ export function UsersPage() {
                       </IconButton>
                       <IconButton
                         size="small"
-                        onClick={() => handleDelete(user.id)}
+                        onClick={() => handleDelete(user.user_id)}
                         color="error"
                         aria-label="Delete"
+                        disabled={user.role === 'owner'}
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -322,10 +329,10 @@ export function UsersPage() {
             <Table stickyHeader aria-label="users table" sx={{ minWidth: 900 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>ID</TableCell>
+                  <TableCell>User ID</TableCell>
                   <TableCell>Role</TableCell>
-                  <TableCell>Created At</TableCell>
-                  <TableCell>Updated At</TableCell>
+                  <TableCell>Member since</TableCell>
+                  <TableCell>Profile updated</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -338,14 +345,16 @@ export function UsersPage() {
                   </TableRow>
                 ) : (
                   users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>{user.id}</TableCell>
+                    <TableRow key={user.user_id}>
+                      <TableCell>{user.user_id}</TableCell>
                       <TableCell>{user.role}</TableCell>
                       <TableCell>
                         {new Date(user.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        {new Date(user.updated_at).toLocaleDateString()}
+                        {user.profiles?.updated_at
+                          ? new Date(user.profiles.updated_at).toLocaleDateString()
+                          : '—'}
                       </TableCell>
                       <TableCell>
                         <IconButton
@@ -357,8 +366,9 @@ export function UsersPage() {
                         </IconButton>
                         <IconButton
                           size="small"
-                          onClick={() => handleDelete(user.id)}
+                          onClick={() => handleDelete(user.user_id)}
                           color="error"
+                          disabled={user.role === 'owner'}
                         >
                           <DeleteIcon />
                         </IconButton>
@@ -374,9 +384,7 @@ export function UsersPage() {
 
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
         <form onSubmit={handleSubmit}>
-          <DialogTitle>
-            {editingUser ? 'Edit User' : 'Add User'}
-          </DialogTitle>
+          <DialogTitle>Edit bar member</DialogTitle>
           <DialogContent>
             <TextField
               margin="dense"
@@ -384,16 +392,22 @@ export function UsersPage() {
               select
               fullWidth
               value={formData.role}
-              onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' }))}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, role: e.target.value as BarMemberRole }))
+              }
             >
-              <MenuItem value="user">User</MenuItem>
+              <MenuItem value="patron">Patron</MenuItem>
+              <MenuItem value="staff">Staff</MenuItem>
               <MenuItem value="admin">Admin</MenuItem>
+              {editingUser?.role === 'owner' ? (
+                <MenuItem value="owner">Owner</MenuItem>
+              ) : null}
             </TextField>
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClose}>Cancel</Button>
-            <Button type="submit" variant="contained" color="primary">
-              {editingUser ? 'Update' : 'Add'}
+            <Button type="submit" variant="contained" color="primary" disabled={!editingUser}>
+              Update
             </Button>
           </DialogActions>
         </form>

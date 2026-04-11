@@ -1,10 +1,11 @@
 -- First, let's clear any existing data to avoid conflicts
 DELETE FROM public.cocktail_ingredients;
+DELETE FROM public.bar_cocktails;
 DELETE FROM public.cocktails;
 DELETE FROM public.ingredients;
 
 -- Insert sample ingredients with per-unit prices (price per ounce for spirits, per unit for others)
-INSERT INTO public.ingredients (name, price, image_url) VALUES
+INSERT INTO public.ingredients (name, price_per_ounce, image_url) VALUES
     ('Vodka', 0.88, 'https://example.com/vodka.jpg'),           -- $0.88 per oz
     ('Gin', 0.92, 'https://example.com/gin.jpg'),               -- $0.92 per oz
     ('White Rum', 0.85, 'https://example.com/white-rum.jpg'),   -- $0.85 per oz
@@ -29,9 +30,10 @@ INSERT INTO public.cocktails (name, description, image_url) VALUES
     ('Cosmopolitan', 'A vodka-based cocktail with cranberry and lime', 'https://example.com/cosmopolitan.jpg'),
     ('Gin & Tonic', 'A simple and refreshing gin cocktail', 'https://example.com/gin-tonic.jpg');
 
--- Let's verify the IDs before inserting relationships
+-- Resolve IDs within the default bar (stable tenant id from migrations)
 DO $$
 DECLARE
+    default_bar uuid := 'a0000000-0000-4000-8000-000000000001'::uuid;
     mojito_id uuid;
     margarita_id uuid;
     old_fashioned_id uuid;
@@ -52,26 +54,26 @@ DECLARE
     cranberry_juice_id uuid;
 BEGIN
     -- Get cocktail IDs
-    SELECT id INTO mojito_id FROM public.cocktails WHERE name = 'Mojito';
-    SELECT id INTO margarita_id FROM public.cocktails WHERE name = 'Margarita';
-    SELECT id INTO old_fashioned_id FROM public.cocktails WHERE name = 'Old Fashioned';
-    SELECT id INTO cosmopolitan_id FROM public.cocktails WHERE name = 'Cosmopolitan';
-    SELECT id INTO gin_tonic_id FROM public.cocktails WHERE name = 'Gin & Tonic';
+    SELECT id INTO mojito_id FROM public.cocktails WHERE name = 'Mojito' LIMIT 1;
+    SELECT id INTO margarita_id FROM public.cocktails WHERE name = 'Margarita' LIMIT 1;
+    SELECT id INTO old_fashioned_id FROM public.cocktails WHERE name = 'Old Fashioned' LIMIT 1;
+    SELECT id INTO cosmopolitan_id FROM public.cocktails WHERE name = 'Cosmopolitan' LIMIT 1;
+    SELECT id INTO gin_tonic_id FROM public.cocktails WHERE name = 'Gin & Tonic' LIMIT 1;
 
     -- Get ingredient IDs
-    SELECT id INTO white_rum_id FROM public.ingredients WHERE name = 'White Rum';
-    SELECT id INTO tequila_id FROM public.ingredients WHERE name = 'Tequila';
-    SELECT id INTO whiskey_id FROM public.ingredients WHERE name = 'Whiskey';
-    SELECT id INTO vodka_id FROM public.ingredients WHERE name = 'Vodka';
-    SELECT id INTO gin_id FROM public.ingredients WHERE name = 'Gin';
-    SELECT id INTO triple_sec_id FROM public.ingredients WHERE name = 'Triple Sec';
-    SELECT id INTO lime_juice_id FROM public.ingredients WHERE name = 'Lime Juice';
-    SELECT id INTO simple_syrup_id FROM public.ingredients WHERE name = 'Simple Syrup';
-    SELECT id INTO mint_leaves_id FROM public.ingredients WHERE name = 'Mint Leaves';
-    SELECT id INTO club_soda_id FROM public.ingredients WHERE name = 'Club Soda';
-    SELECT id INTO bitters_id FROM public.ingredients WHERE name = 'Bitters';
-    SELECT id INTO sugar_id FROM public.ingredients WHERE name = 'Sugar';
-    SELECT id INTO cranberry_juice_id FROM public.ingredients WHERE name = 'Cranberry Juice';
+    SELECT id INTO white_rum_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'White Rum';
+    SELECT id INTO tequila_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Tequila';
+    SELECT id INTO whiskey_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Whiskey';
+    SELECT id INTO vodka_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Vodka';
+    SELECT id INTO gin_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Gin';
+    SELECT id INTO triple_sec_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Triple Sec';
+    SELECT id INTO lime_juice_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Lime Juice';
+    SELECT id INTO simple_syrup_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Simple Syrup';
+    SELECT id INTO mint_leaves_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Mint Leaves';
+    SELECT id INTO club_soda_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Club Soda';
+    SELECT id INTO bitters_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Bitters';
+    SELECT id INTO sugar_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Sugar';
+    SELECT id INTO cranberry_juice_id FROM public.ingredients WHERE bar_id = default_bar AND name = 'Cranberry Juice';
 
     -- Insert cocktail ingredients using the stored IDs
     -- Mojito
@@ -110,4 +112,13 @@ BEGIN
     VALUES 
         (gin_tonic_id, gin_id, 2, 'oz'),
         (gin_tonic_id, club_soda_id, 4, 'oz');
+
+    INSERT INTO public.bar_cocktails (bar_id, cocktail_id, active, is_featured)
+    VALUES
+        (default_bar, mojito_id, true, false),
+        (default_bar, margarita_id, true, false),
+        (default_bar, old_fashioned_id, true, false),
+        (default_bar, cosmopolitan_id, true, false),
+        (default_bar, gin_tonic_id, true, false)
+    ON CONFLICT (bar_id, cocktail_id) DO NOTHING;
 END $$; 

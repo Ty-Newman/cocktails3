@@ -2,13 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
-interface Favorite {
-  id: string;
-  user_id: string;
-  cocktail_id: string;
-  created_at: string;
-}
-
 interface FavoritesContextType {
   favorites: string[];
   isFavorite: (cocktailId: string) => boolean;
@@ -18,32 +11,40 @@ interface FavoritesContextType {
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
 
-export function FavoritesProvider({ children }: { children: React.ReactNode }) {
+export function FavoritesProvider({
+  children,
+  barId,
+}: {
+  children: React.ReactNode;
+  barId: string;
+}) {
   const { user } = useAuth();
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load favorites when user changes
   useEffect(() => {
     if (user) {
-      loadFavorites();
+      void loadFavorites();
     } else {
       setFavorites([]);
       setLoading(false);
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when user or tenant changes
+  }, [user, barId]);
 
   const loadFavorites = async () => {
+    if (!user) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('favorites')
         .select('cocktail_id')
-        .eq('user_id', user?.id);
+        .eq('user_id', user.id)
+        .eq('bar_id', barId);
 
       if (error) throw error;
 
-      setFavorites(data.map(fav => fav.cocktail_id));
+      setFavorites((data ?? []).map(fav => fav.cocktail_id));
     } catch (error) {
       console.error('Error loading favorites:', error);
     } finally {
@@ -60,23 +61,20 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (isFavorite(cocktailId)) {
-        // Remove from favorites
         const { error } = await supabase
           .from('favorites')
           .delete()
           .eq('user_id', user.id)
-          .eq('cocktail_id', cocktailId);
+          .eq('cocktail_id', cocktailId)
+          .eq('bar_id', barId);
 
         if (error) throw error;
 
         setFavorites(favorites.filter(id => id !== cocktailId));
       } else {
-        // Add to favorites
         const { error } = await supabase
           .from('favorites')
-          .insert([
-            { user_id: user.id, cocktail_id: cocktailId }
-          ]);
+          .insert([{ user_id: user.id, cocktail_id: cocktailId, bar_id: barId }]);
 
         if (error) throw error;
 
@@ -107,4 +105,4 @@ export function useFavorites() {
     throw new Error('useFavorites must be used within a FavoritesProvider');
   }
   return context;
-} 
+}

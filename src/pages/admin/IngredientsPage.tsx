@@ -34,12 +34,12 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { supabase } from '../../services/supabase';
 import type { IngredientType, BottleSize } from '../../types/supabase';
+import { useBar } from '../../contexts/BarContext';
 
 interface Ingredient {
   id: string;
   name: string;
-  price: number | null;
-  bottle_size: BottleSize;
+  bottle_size: BottleSize | null;
   price_per_ounce: number | null;
   link: string | null;
   image_url: string | null;
@@ -86,6 +86,21 @@ const calculatePricePerUnit = (price: number, bottleSize: BottleSize, type: Ingr
   return (price * mlPerOunce) / mlInBottle;
 };
 
+/** Approximate bottle retail price for the form from stored `price_per_ounce`. */
+function bottleRetailPriceForForm(
+  ppo: number | null,
+  bs: BottleSize | null,
+  type: IngredientType | null
+): string | number {
+  if (ppo == null) return '';
+  if (type === 'bitters') {
+    return (ppo * 200).toFixed(2);
+  }
+  if (!bs) return ppo;
+  const mlInBottle = bottleSizeToMl[bs];
+  return ((ppo * mlInBottle) / 29.5735).toFixed(2);
+}
+
 const ingredientTypeOptions = [
   { value: 'spirit', label: 'Spirit' },
   { value: 'liqueur', label: 'Liqueur' },
@@ -96,6 +111,7 @@ const ingredientTypeOptions = [
 ];
 
 export function IngredientsPage() {
+  const { bar } = useBar();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [open, setOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
@@ -147,13 +163,14 @@ export function IngredientsPage() {
   }, []);
 
   useEffect(() => {
-    fetchIngredients();
-  }, []);
+    void fetchIngredients();
+  }, [bar?.id]);
 
   const fetchIngredients = async () => {
     const { data, error } = await supabase
       .from('ingredients')
       .select('*')
+      .eq('bar_id', bar!.id)
       .order('name');
 
     if (error) {
@@ -167,8 +184,11 @@ export function IngredientsPage() {
   const handleOpen = (ingredient?: Ingredient) => {
     if (ingredient) {
       setEditingIngredient(ingredient);
-      // Calculate total price from price_per_ounce for display
-      const totalPrice = ingredient.price;
+      const totalPrice = bottleRetailPriceForForm(
+        ingredient.price_per_ounce,
+        ingredient.bottle_size,
+        ingredient.type
+      );
       setFormData({
         name: ingredient.name,
         type: ingredient.type,
@@ -248,12 +268,26 @@ export function IngredientsPage() {
     if (!supabase) return;
 
     try {
+      const priceNum =
+        typeof formData.price === 'string' ? parseFloat(formData.price) : Number(formData.price);
+      let price_per_ounce: number | null = null;
+      if (!Number.isFinite(priceNum)) {
+        price_per_ounce = null;
+      } else if (formData.type === 'bitters' && formData.bottle_size) {
+        price_per_ounce = calculatePricePerUnit(priceNum, formData.bottle_size, formData.type as IngredientType);
+      } else if ((formData.type === 'juice' || formData.type === 'other') && !formData.isBottled) {
+        price_per_ounce = priceNum;
+      } else if (formData.bottle_size && formData.type) {
+        price_per_ounce = calculatePricePerUnit(priceNum, formData.bottle_size, formData.type as IngredientType);
+      }
+
       const ingredientData = {
         name: formData.name,
         type: formData.type,
-        price: formData.price,
+        price_per_ounce,
         bottle_size: (formData.type === 'juice' || formData.type === 'other') && !formData.isBottled ? null : formData.bottle_size,
-        link: formData.link || null
+        link: formData.link || null,
+        bar_id: bar!.id,
       };
 
       if (editingIngredient) {
@@ -352,7 +386,7 @@ export function IngredientsPage() {
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       {ingredient.type ?? '—'}
-                      {ingredient.price != null ? ` • $${ingredient.price.toFixed(2)}` : ''}
+                      {ingredient.price_per_ounce != null ? ` • $${ingredient.price_per_ounce.toFixed(3)}/u` : ''}
                     </Typography>
                     {ingredient.link && (
                       <Typography variant="body2" sx={{ mt: 0.5 }}>
@@ -385,7 +419,7 @@ export function IngredientsPage() {
               <TableRow>
                 <TableCell>Name</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Price</TableCell>
+                <TableCell>$/unit</TableCell>
                 <TableCell>Link</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
@@ -395,7 +429,9 @@ export function IngredientsPage() {
                 <TableRow key={ingredient.id}>
                   <TableCell>{ingredient.name}</TableCell>
                   <TableCell>{ingredient.type}</TableCell>
-                  <TableCell>${ingredient.price?.toFixed(2)}</TableCell>
+                  <TableCell>
+                    {ingredient.price_per_ounce != null ? `$${ingredient.price_per_ounce.toFixed(3)}` : '—'}
+                  </TableCell>
                   <TableCell>
                     {ingredient.link && (
                       <a 

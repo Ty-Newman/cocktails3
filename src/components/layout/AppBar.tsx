@@ -18,15 +18,28 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
+import { useBar } from '../../contexts/BarContext';
+import { barPath } from '../../utils/barPaths';
+import { DEFAULT_BAR_SLUG } from '../../constants/bars';
 
 export function AppBar() {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, canAdminBar, signOut } = useAuth();
+  const { bar } = useBar();
   const { totalItems } = useCart();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileMenuAnchorEl, setMobileMenuAnchorEl] = useState<null | HTMLElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  const slug = bar?.slug ?? DEFAULT_BAR_SLUG;
+  const base = barPath(slug);
+  const cocktailsPath = barPath(slug, 'cocktails');
+  const cartPath = barPath(slug, 'cart');
+  const profilePath = barPath(slug, 'profile');
+  const adminCocktailsPath = barPath(slug, 'admin', 'cocktails');
+  /** Sign in / register as a guest of this bar (not prompted to create a separate venue). */
+  const loginAtThisBarPath = `/login?bar=${encodeURIComponent(slug)}`;
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -56,7 +69,7 @@ export function AppBar() {
         <Typography
           variant="h6"
           component={RouterLink}
-          to="/"
+          to={base}
           sx={{
             flexGrow: 1,
             textDecoration: 'none',
@@ -65,7 +78,7 @@ export function AppBar() {
             alignItems: 'center',
           }}
         >
-          Cocktails
+          {bar?.name ?? 'Cocktails'}
         </Typography>
 
         {isMobile ? (
@@ -73,7 +86,7 @@ export function AppBar() {
             <IconButton
               color="inherit"
               component={RouterLink}
-              to="/cart"
+              to={cartPath}
               sx={{ mr: 1 }}
             >
               <Badge badgeContent={totalItems} color="error">
@@ -84,7 +97,7 @@ export function AppBar() {
               <IconButton
                 color="inherit"
                 component={RouterLink}
-                to="/profile"
+                to={profilePath}
                 sx={{ mr: 1 }}
                 aria-label="Profile"
               >
@@ -112,17 +125,17 @@ export function AppBar() {
                 horizontal: 'right',
               }}
             >
-              <MenuItem 
-                component={RouterLink} 
-                to="/cocktails"
+              <MenuItem
+                component={RouterLink}
+                to={cocktailsPath}
                 onClick={handleMobileMenuClose}
               >
                 All Cocktails
               </MenuItem>
-              {isAdmin && (
-                <MenuItem 
-                  component={RouterLink} 
-                  to="/admin/cocktails"
+              {canAdminBar(bar?.id) && (
+                <MenuItem
+                  component={RouterLink}
+                  to={adminCocktailsPath}
                   onClick={handleMobileMenuClose}
                 >
                   Admin
@@ -130,9 +143,9 @@ export function AppBar() {
               )}
               {user ? (
                 <>
-                  <MenuItem 
-                    component={RouterLink} 
-                    to="/profile"
+                  <MenuItem
+                    component={RouterLink}
+                    to={profilePath}
                     onClick={handleMobileMenuClose}
                   >
                     Profile
@@ -141,19 +154,26 @@ export function AppBar() {
                 </>
               ) : (
                 <>
-                  <MenuItem 
-                    component={RouterLink} 
-                    to="/login"
+                  <MenuItem
+                    component={RouterLink}
+                    to={loginAtThisBarPath}
                     onClick={handleMobileMenuClose}
                   >
                     Login
                   </MenuItem>
-                  <MenuItem 
-                    component={RouterLink} 
-                    to="/login"
+                  <MenuItem
+                    component={RouterLink}
+                    to={loginAtThisBarPath}
                     onClick={handleMobileMenuClose}
                   >
                     Register
+                  </MenuItem>
+                  <MenuItem
+                    component={RouterLink}
+                    to="/register/bar-owner"
+                    onClick={handleMobileMenuClose}
+                  >
+                    Register your own bar
                   </MenuItem>
                 </>
               )}
@@ -164,7 +184,7 @@ export function AppBar() {
             <Button
               color="inherit"
               component={RouterLink}
-              to="/cocktails"
+              to={cocktailsPath}
             >
               All Cocktails
             </Button>
@@ -172,7 +192,7 @@ export function AppBar() {
             <IconButton
               color="inherit"
               component={RouterLink}
-              to="/cart"
+              to={cartPath}
               sx={{ ml: 1 }}
             >
               <Badge badgeContent={totalItems} color="error">
@@ -180,11 +200,11 @@ export function AppBar() {
               </Badge>
             </IconButton>
 
-            {isAdmin && (
+            {canAdminBar(bar?.id) && (
               <Button
                 color="inherit"
                 component={RouterLink}
-                to="/admin/cocktails"
+                to={adminCocktailsPath}
               >
                 Admin
               </Button>
@@ -217,9 +237,9 @@ export function AppBar() {
                   open={Boolean(anchorEl)}
                   onClose={handleClose}
                 >
-                  <MenuItem 
-                    component={RouterLink} 
-                    to="/profile"
+                  <MenuItem
+                    component={RouterLink}
+                    to={profilePath}
                     onClick={handleClose}
                   >
                     Profile
@@ -232,16 +252,24 @@ export function AppBar() {
                 <Button
                   color="inherit"
                   component={RouterLink}
-                  to="/login"
+                  to={loginAtThisBarPath}
                 >
                   Login
                 </Button>
                 <Button
                   color="inherit"
                   component={RouterLink}
-                  to="/login"
+                  to={loginAtThisBarPath}
                 >
                   Register
+                </Button>
+                <Button
+                  color="inherit"
+                  component={RouterLink}
+                  to="/register/bar-owner"
+                  size="small"
+                >
+                  Own a bar
                 </Button>
               </>
             )}
@@ -250,4 +278,4 @@ export function AppBar() {
       </Toolbar>
     </MuiAppBar>
   );
-} 
+}

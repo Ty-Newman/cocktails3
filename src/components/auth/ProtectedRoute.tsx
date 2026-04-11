@@ -7,14 +7,14 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
-  const { user, isAdmin } = useAuth();
+  const { user, isSuperadmin } = useAuth();
   const location = useLocation();
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  if (requireAdmin && !isSuperadmin) {
     return <Navigate to="/" replace />;
   }
 

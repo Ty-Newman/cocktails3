@@ -26,7 +26,8 @@ export interface Ingredient {
   id: string;
   name: string;
   description?: string;
-  price: number;
+  price?: number;
+  price_per_ounce?: number | null;
   bottle_size: BottleSize | null;
   type: IngredientType;
   link?: string;

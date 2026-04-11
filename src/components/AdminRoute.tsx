@@ -1,13 +1,17 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useBar } from '../contexts/BarContext';
 import { Box, CircularProgress } from '@mui/material';
+import { DEFAULT_BAR_SLUG } from '../constants/bars';
+import { barPath } from '../utils/barPaths';
 
 interface AdminRouteProps {
   children: React.ReactNode;
 }
 
 export function AdminRoute({ children }: AdminRouteProps) {
-  const { isAdmin, loading } = useAuth();
+  const { canAdminBar, loading, homeBarSlug } = useAuth();
+  const { bar } = useBar();
 
   if (loading) {
     return (
@@ -17,9 +21,10 @@ export function AdminRoute({ children }: AdminRouteProps) {
     );
   }
 
-  if (!isAdmin) {
-    return <Navigate to="/" replace />;
+  if (!canAdminBar(bar?.id)) {
+    const slug = bar?.slug ?? homeBarSlug ?? DEFAULT_BAR_SLUG;
+    return <Navigate to={barPath(slug)} replace />;
   }
 
   return <>{children}</>;
-} 
+}

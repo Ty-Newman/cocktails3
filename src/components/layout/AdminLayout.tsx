@@ -1,4 +1,5 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useParams } from 'react-router-dom';
+import { barPath } from '../../utils/barPaths';
 import {
   Box,
   Container,
@@ -28,21 +29,23 @@ import { useState } from 'react';
 const drawerWidth = 240;
 
 export function AdminLayout() {
+  const { barSlug } = useParams<{ barSlug: string }>();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const slug = barSlug ?? 'default';
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
   const menuItems = [
-    { text: 'Home', icon: <HomeIcon />, path: '/' },
-    { text: 'Cocktails', icon: <CocktailIcon />, path: '/admin/cocktails' },
-    { text: 'Ingredients', icon: <InventoryIcon />, path: '/admin/ingredients' },
-    { text: 'Users', icon: <PeopleIcon />, path: '/admin/users' },
-    { text: 'Orders', icon: <OrdersIcon />, path: '/admin/orders' }
+    { text: 'Home', icon: <HomeIcon />, path: barPath(slug) },
+    { text: 'Cocktails', icon: <CocktailIcon />, path: barPath(slug, 'admin', 'cocktails') },
+    { text: 'Ingredients', icon: <InventoryIcon />, path: barPath(slug, 'admin', 'ingredients') },
+    { text: 'Users', icon: <PeopleIcon />, path: barPath(slug, 'admin', 'users') },
+    { text: 'Orders', icon: <OrdersIcon />, path: barPath(slug, 'admin', 'orders') }
   ];
 
   const drawer = (

@@ -23,10 +23,14 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { useCart } from '../contexts/CartContext';
 import { useNavigate } from 'react-router-dom';
+import { useBar } from '../contexts/BarContext';
+import { barPath } from '../utils/barPaths';
 
 export function CartPage() {
+  const { bar } = useBar();
   const { items, removeFromCart, updateQuantity, clearCart, totalCost } = useCart();
   const navigate = useNavigate();
+  const slug = bar!.slug;
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
   const [confirmDialog, setConfirmDialog] = useState(false);
 
@@ -56,7 +60,7 @@ export function CartPage() {
           <Button
             variant="contained"
             color="primary"
-            onClick={() => navigate('/cocktails')}
+            onClick={() => navigate(barPath(slug, 'cocktails'))}
             sx={{ mt: 2 }}
           >
             Browse Cocktails

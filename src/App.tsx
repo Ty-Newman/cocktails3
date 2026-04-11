@@ -1,10 +1,9 @@
-import { ThemeProvider, createTheme, CssBaseline, Container } from '@mui/material';
+import { ThemeProvider, createTheme, CssBaseline, Box, CircularProgress } from '@mui/material';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
 import { AuthCallback } from './pages/AuthCallback';
 import { AdminRoute } from './components/AdminRoute';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { IngredientsPage } from './pages/admin/IngredientsPage';
 import { HomePage } from './pages/HomePage';
 import { CocktailsList } from './pages/CocktailsList';
@@ -13,11 +12,11 @@ import { OrdersPage } from './pages/admin/OrdersPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { SupabaseProvider } from './contexts/SupabaseContext';
 import { AdminLayout } from './components/layout/AdminLayout';
-import { CartProvider } from './contexts/CartContext';
-import { FavoritesProvider } from './contexts/FavoritesContext';
 import { CartPage } from './pages/CartPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { AppBar } from './components/layout/AppBar';
+import { TenantLayout } from './components/layout/TenantLayout';
+import { DEFAULT_BAR_SLUG } from './constants/bars';
+import { barPath, defaultBarHome } from './utils/barPaths';
 
 const theme = createTheme({
   palette: {
@@ -38,43 +37,55 @@ const theme = createTheme({
   },
 });
 
-function AppContent() {
-  const { user, loading, isAdmin } = useAuth();
+function LoginRoute() {
+  const { user, loading, homeBarSlug } = useAuth();
 
-  console.log('AppContent render:', { user, loading, isAdmin });
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
+  if (user) {
+    return <Navigate to={barPath(homeBarSlug ?? DEFAULT_BAR_SLUG)} replace />;
+  }
+
+  return <Login />;
+}
+
+function AppRoutes() {
   return (
-    <>
-      <AppBar />
-      <Container
-        maxWidth={false}
-        disableGutters
-        sx={{ px: { xs: 1, sm: 2 }, py: { xs: 2, sm: 3 } }}
-      >
-        <Routes>
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-          <Route path="/" element={<HomePage />} />
-          <Route path="/cocktails" element={<CocktailsList />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route
-            path="/admin"
-            element={
-              <AdminRoute>
-                <AdminLayout />
-              </AdminRoute>
-            }
-          >
-            <Route index element={<Navigate to="/admin/ingredients" replace />} />
-            <Route path="ingredients" element={<IngredientsPage />} />
-            <Route path="cocktails" element={<CocktailsPage />} />
-            <Route path="orders" element={<OrdersPage />} />
-            <Route path="users" element={<UsersPage />} />
-          </Route>
-        </Routes>
-      </Container>
-    </>
+    <Routes>
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route
+        path="/register/bar-owner"
+        element={<Navigate to="/login?intent=owner" replace />}
+      />
+      <Route path="/login" element={<LoginRoute />} />
+      <Route path="/" element={<Navigate to={defaultBarHome()} replace />} />
+      <Route path="/:barSlug" element={<TenantLayout />}>
+        <Route index element={<HomePage />} />
+        <Route path="cocktails" element={<CocktailsList />} />
+        <Route path="cart" element={<CartPage />} />
+        <Route path="profile" element={<ProfilePage />} />
+        <Route
+          path="admin"
+          element={
+            <AdminRoute>
+              <AdminLayout />
+            </AdminRoute>
+          }
+        >
+          <Route index element={<Navigate to="ingredients" replace />} />
+          <Route path="ingredients" element={<IngredientsPage />} />
+          <Route path="cocktails" element={<CocktailsPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="users" element={<UsersPage />} />
+        </Route>
+      </Route>
+    </Routes>
   );
 }
 
@@ -84,13 +95,9 @@ function App() {
       <CssBaseline />
       <AuthProvider>
         <SupabaseProvider>
-          <CartProvider>
-            <FavoritesProvider>
-              <Router>
-                <AppContent />
-              </Router>
-            </FavoritesProvider>
-          </CartProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
         </SupabaseProvider>
       </AuthProvider>
     </ThemeProvider>

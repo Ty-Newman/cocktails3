@@ -21,75 +21,16 @@ import { supabase } from '../lib/supabase';
 import { searchCocktailByName } from '../services/cocktailDB';
 import { useCart } from '../contexts/CartContext';
 import { FavoriteButton } from '../components/FavoriteButton';
-import type { Cocktail, IngredientType, BottleSize, CocktailIngredient } from '../types/cocktail';
+import type { Cocktail } from '../types/cocktail';
+import { useBar } from '../contexts/BarContext';
+import { sumCocktailIngredientCosts } from '../utils/cocktailCost';
+import { cocktailsFromBarMenuRows } from '../utils/barMenuQueries';
 
-// Add the bottle size to ml mapping
-const bottleSizeToMl: Record<BottleSize, number> = {
-  '50ml': 50,
-  '200ml': 200,
-  '375ml': 375,
-  '500ml': 500,
-  '750ml': 750,
-  '1L': 1000,
-  '1.75L': 1750
-};
-
-// Add the price calculation function
-const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize | null, type: IngredientType): number | null => {
-  if (price === null || bottleSize === null) return null;
-  
-  if (type === 'bitters') {
-    // Average bitters bottle has about 200 dashes
-    const dashesPerBottle = 200;
-    return price / dashesPerBottle;
-  }
-  
-  const mlInBottle = bottleSizeToMl[bottleSize];
-  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
-  return (price * mlPerOunce) / mlInBottle;
-};
-
-// Add function to calculate cocktail cost
-const calculateCocktailCost = (ingredients: CocktailIngredient[]): number => {
-  if (!ingredients || ingredients.length === 0) return 0;
-
-  return ingredients.reduce((total, ingredient) => {
-    if (!ingredient.ingredients || !ingredient.amount) return total;
-
-    const price = ingredient.ingredients.price;
-    if (price === null) return total;
-
-    const pricePerUnit = calculatePricePerOunce(
-      price,
-      ingredient.ingredients.bottle_size,
-      ingredient.ingredients.type
-    );
-
-    // For items without bottle size (garnishes, non-bottled items)
-    if (pricePerUnit === null) {
-      return total + (price * ingredient.amount);
-    }
-
-    // For bottled items, calculate based on amount and unit
-    const amount = ingredient.amount;
-    const unit = ingredient.unit.toLowerCase();
-    
-    if (unit === 'dash' && ingredient.ingredients.type === 'bitters') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'ml') {
-      // Convert ml to oz for calculation
-      const mlPerOunce = 29.5735;
-      return total + (pricePerUnit * (amount / mlPerOunce));
-    }
-
-    return total;
-  }, 0);
-};
+type CocktailWithCost = Cocktail & { cost?: number };
 
 export function CocktailsList() {
-  const [cocktails, setCocktails] = useState<Cocktail[]>([]);
+  const { bar } = useBar();
+  const [cocktails, setCocktails] = useState<CocktailWithCost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,38 +44,45 @@ export function CocktailsList() {
   });
 
   useEffect(() => {
-    loadCocktails();
-  }, []);
+    void loadCocktails();
+  }, [bar?.id]);
 
   const loadCocktails = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('cocktails')
+        .from('bar_cocktails')
         .select(`
-          *,
-          cocktail_ingredients (
-            id,
-            amount,
-            unit,
-            ingredients (
+          cocktails (
+            *,
+            cocktail_ingredients (
               id,
-              name,
-              price,
-              bottle_size,
-              type
+              amount,
+              unit,
+              ingredients (
+                id,
+                name,
+                price_per_ounce,
+                price,
+                bottle_size,
+                type
+              )
             )
           )
         `)
-        .order('name');
+        .eq('bar_id', bar!.id)
+        .eq('active', true);
 
       if (error) throw error;
 
+      const menu = cocktailsFromBarMenuRows(data);
+      menu.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
       // Process cocktails with images from CocktailDB and calculate costs
-      console.log(`Processing ${(data || []).length} cocktails for images...`);
-      const cocktailPromises = (data || []).map(async (cocktail, index) => {
+      console.log(`Processing ${menu.length} cocktails for images...`);
+      const cocktailPromises = menu.map(async (cocktail, index) => {
           try {
-            console.log(`[${index + 1}/${(data || []).length}] Processing: ${cocktail.name}, current image_url:`, cocktail.image_url);
+            console.log(`[${index + 1}/${menu.length}] Processing: ${cocktail.name}, current image_url:`, cocktail.image_url);
             
             // Only search API if image_url is not already provided (check for null, undefined, empty string, or placeholder URLs)
             let imageUrl = cocktail.image_url;
@@ -176,7 +124,7 @@ export function CocktailsList() {
               console.log(`[${index + 1}] ${cocktail.name} already has image_url, skipping API search`);
             }
             
-            const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);
+            const cost = sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []);
             console.log(`[${index + 1}] Completed processing ${cocktail.name}`);
             return {
               ...cocktail,
@@ -189,7 +137,7 @@ export function CocktailsList() {
             return {
               ...cocktail,
               image_url: cocktail.image_url || null,
-              cost: calculateCocktailCost(cocktail.cocktail_ingredients || [])
+              cost: sumCocktailIngredientCosts(cocktail.cocktail_ingredients || [])
             };
           }
         });
@@ -202,11 +150,11 @@ export function CocktailsList() {
         } else {
           console.error(`Cocktail at index ${index} failed:`, result.reason);
           // Return a fallback object for failed cocktails
-          const cocktail = (data || [])[index];
+          const cocktail = menu[index];
           return {
             ...cocktail,
             image_url: cocktail.image_url || null,
-            cost: calculateCocktailCost(cocktail.cocktail_ingredients || [])
+            cost: sumCocktailIngredientCosts(cocktail.cocktail_ingredients || [])
           };
         }
       });
@@ -222,7 +170,7 @@ export function CocktailsList() {
     }
   };
 
-  const handleAddToCart = (cocktail: Cocktail) => {
+  const handleAddToCart = (cocktail: CocktailWithCost) => {
     addToCart({
       id: cocktail.id,
       name: cocktail.name,

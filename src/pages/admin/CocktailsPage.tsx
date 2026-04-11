@@ -41,16 +41,22 @@ import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { supabase } from '../../services/supabase';
-import type { Ingredient, IngredientType } from '../../types/supabase';
+import type { Ingredient, BottleSize } from '../../types/supabase';
+import { useBar } from '../../contexts/BarContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { sumCocktailIngredientCosts } from '../../utils/cocktailCost';
 
 interface CocktailIngredient {
   id: string;
+  bar_id?: string;
   amount: number;
   unit: string;
   ingredients: {
     id: string;
     name: string;
-    price: number;
+    price_per_ounce?: number | null;
+    price?: number | null;
+    bottle_size?: BottleSize | null;
     type: string;
   };
 }
@@ -64,78 +70,18 @@ interface Cocktail {
   created_at: string;
   updated_at: string;
   is_featured: boolean;
+  bar_id?: string | null;
+  /** Featured on this bar's menu (`bar_cocktails.is_featured`). */
+  menu_is_featured: boolean;
 }
 
 interface FormIngredient extends CocktailIngredient {
   ingredient: Ingredient;
 }
 
-// Add the bottle size to ml mapping
-const bottleSizeToMl: Record<BottleSize, number> = {
-  '50ml': 50,
-  '200ml': 200,
-  '375ml': 375,
-  '500ml': 500,
-  '750ml': 750,
-  '1L': 1000,
-  '1.75L': 1750
-};
-
-// Add the price calculation function
-const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize | null, type: IngredientType): number | null => {
-  if (price === null || bottleSize === null) return null;
-  
-  if (type === 'bitters') {
-    // Average bitters bottle has about 200 dashes
-    const dashesPerBottle = 200;
-    return price / dashesPerBottle;
-  }
-  
-  const mlInBottle = bottleSizeToMl[bottleSize];
-  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
-  return (price * mlPerOunce) / mlInBottle;
-};
-
-// Add function to calculate cocktail cost
-const calculateCocktailCost = (ingredients: CocktailIngredient[]): number => {
-  if (!ingredients || ingredients.length === 0) return 0;
-
-  return ingredients.reduce((total, ingredient) => {
-    if (!ingredient.ingredients || !ingredient.amount) return total;
-
-    const price = ingredient.ingredients.price;
-    if (price === null) return total;
-
-    const pricePerUnit = calculatePricePerOunce(
-      price,
-      ingredient.ingredients.bottle_size,
-      ingredient.ingredients.type
-    );
-
-    // For items without bottle size (garnishes, non-bottled items)
-    if (pricePerUnit === null) {
-      return total + (price * ingredient.amount);
-    }
-
-    // For bottled items, calculate based on amount and unit
-    const amount = ingredient.amount;
-    const unit = ingredient.unit.toLowerCase();
-    
-    if (unit === 'dash' && ingredient.ingredients.type === 'bitters') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'ml') {
-      // Convert ml to oz for calculation
-      const mlPerOunce = 29.5735;
-      return total + (pricePerUnit * (amount / mlPerOunce));
-    }
-
-    return total;
-  }, 0);
-};
-
 export function CocktailsPage() {
+  const { bar } = useBar();
+  const { isSuperadmin } = useAuth();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [open, setOpen] = useState(false);
@@ -191,34 +137,59 @@ export function CocktailsPage() {
   }, []);
 
   useEffect(() => {
-    fetchCocktails();
-    fetchIngredients();
-  }, []);
+    void fetchCocktails();
+    void fetchIngredients();
+  }, [bar?.id]);
 
   const fetchCocktails = async () => {
     if (!supabase) return;
 
     try {
       const { data, error } = await supabase
-        .from('cocktails')
+        .from('bar_cocktails')
         .select(`
-          *,
-          cocktail_ingredients (
-            amount,
-            unit,
-            ingredients (
-              id,
-              name,
-              price,
-              bottle_size,
-              type
+          is_featured,
+          sort_order,
+          cocktails (
+            id,
+            name,
+            description,
+            image_url,
+            bar_id,
+            is_featured,
+            created_at,
+            updated_at,
+            cocktail_ingredients (
+              bar_id,
+              amount,
+              unit,
+              ingredients (
+                id,
+                name,
+                price_per_ounce,
+                price,
+                bottle_size,
+                type
+              )
             )
           )
         `)
-        .order('name');
+        .eq('bar_id', bar!.id)
+        .eq('active', true);
 
       if (error) throw error;
-      setCocktails(data || []);
+      const rows = data ?? [];
+      const list: Cocktail[] = [];
+      for (const row of rows) {
+        const c = row.cocktails as Omit<Cocktail, 'menu_is_featured'> | null;
+        if (!c) continue;
+        list.push({
+          ...c,
+          menu_is_featured: !!row.is_featured,
+        });
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      setCocktails(list);
     } catch (error) {
       console.error('Error fetching cocktails:', error);
       setError(error instanceof Error ? error.message : 'Error fetching cocktails');
@@ -229,6 +200,7 @@ export function CocktailsPage() {
     const { data, error } = await supabase
       .from('ingredients')
       .select('*')
+      .eq('bar_id', bar!.id)
       .order('name');
 
     if (error) {
@@ -280,7 +252,9 @@ export function CocktailsPage() {
           ingredients: {
             id: ingredient.id,
             name: ingredient.name,
-            price: ingredient.price || 0,
+            price_per_ounce: ingredient.price_per_ounce,
+            price: ingredient.price,
+            bottle_size: ingredient.bottle_size,
             type: ingredient.type || 'other',
           },
           ingredient,
@@ -309,23 +283,35 @@ export function CocktailsPage() {
     e.preventDefault();
     if (!supabase) return;
 
+    const editingGlobal =
+      !!editingCocktail &&
+      (editingCocktail.bar_id === null || editingCocktail.bar_id === undefined);
+    if (editingGlobal && !isSuperadmin) {
+      setError('Shared catalog recipes can only be edited by platform staff.');
+      return;
+    }
+
     try {
-      const cocktailData = {
+      const cocktailDataScoped = {
         name: formData.name,
         description: formData.description,
-        image_url: formData.image_url || null
+        image_url: formData.image_url || null,
+        bar_id: bar!.id,
+      };
+      const cocktailDataGlobal = {
+        name: formData.name,
+        description: formData.description,
+        image_url: formData.image_url || null,
       };
 
-      let cocktailId: number;
+      let cocktailId: string;
 
       if (editingCocktail) {
-        // Update existing cocktail
-        const { data, error } = await supabase
+        const payload = editingGlobal ? cocktailDataGlobal : cocktailDataScoped;
+        const { error } = await supabase
           .from('cocktails')
-          .update(cocktailData)
-          .eq('id', editingCocktail.id)
-          .select()
-          .single();
+          .update(payload)
+          .eq('id', editingCocktail.id);
 
         if (error) throw error;
         cocktailId = editingCocktail.id;
@@ -333,12 +319,20 @@ export function CocktailsPage() {
         // Create new cocktail
         const { data, error } = await supabase
           .from('cocktails')
-          .insert([cocktailData])
+          .insert([cocktailDataScoped])
           .select()
           .single();
 
         if (error) throw error;
         cocktailId = data.id;
+
+        const { error: menuErr } = await supabase.from('bar_cocktails').insert({
+          bar_id: bar!.id,
+          cocktail_id: cocktailId,
+          active: true,
+          is_featured: false,
+        });
+        if (menuErr) throw menuErr;
       }
 
       // Delete existing ingredients if editing
@@ -351,12 +345,16 @@ export function CocktailsPage() {
         if (deleteError) throw deleteError;
       }
 
+      const ciBarId =
+        editingCocktail?.cocktail_ingredients?.find((ci) => ci.bar_id)?.bar_id ?? bar!.id;
+
       // Insert new ingredients
       const ingredientInserts = formData.ingredients.map(ing => ({
         cocktail_id: cocktailId,
         ingredient_id: ing.ingredient.id,
         amount: ing.amount,
-        unit: ing.unit
+        unit: ing.unit,
+        bar_id: ciBarId,
       }));
 
       const { error: insertError } = await supabase
@@ -378,14 +376,25 @@ export function CocktailsPage() {
       return;
     }
 
-    const { error } = await supabase
-      .from('cocktails')
-      .delete()
-      .eq('id', id);
+    const row = cocktails.find((c) => c.id === id);
+    const isGlobal = row && (row.bar_id === null || row.bar_id === undefined);
 
-    if (error) {
-      console.error('Error deleting cocktail:', error);
-      return;
+    if (isGlobal) {
+      const { error } = await supabase
+        .from('bar_cocktails')
+        .delete()
+        .eq('bar_id', bar!.id)
+        .eq('cocktail_id', id);
+      if (error) {
+        console.error('Error removing cocktail from menu:', error);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('cocktails').delete().eq('id', id);
+      if (error) {
+        console.error('Error deleting cocktail:', error);
+        return;
+      }
     }
 
     fetchCocktails();
@@ -394,14 +403,15 @@ export function CocktailsPage() {
   const handleToggleFeatured = async (id: string, isFeatured: boolean) => {
     try {
       const { error } = await supabase
-        .from('cocktails')
+        .from('bar_cocktails')
         .update({ is_featured: isFeatured })
-        .eq('id', id);
+        .eq('bar_id', bar!.id)
+        .eq('cocktail_id', id);
 
       if (error) throw error;
 
       setCocktails(cocktails.map(cocktail =>
-        cocktail.id === id ? { ...cocktail, is_featured: isFeatured } : cocktail
+        cocktail.id === id ? { ...cocktail, menu_is_featured: isFeatured } : cocktail
       ));
 
       setSnackbar({
@@ -436,6 +446,11 @@ export function CocktailsPage() {
       ci.ingredients?.name.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
+
+  const recipeReadOnly =
+    !!editingCocktail &&
+    (editingCocktail.bar_id === null || editingCocktail.bar_id === undefined) &&
+    !isSuperadmin;
 
   return (
     <Container
@@ -518,19 +533,19 @@ export function CocktailsPage() {
                     )}
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                       Cost:{' '}
-                      ${isNaN(calculateCocktailCost(cocktail.cocktail_ingredients || [])) 
+                      ${isNaN(sumCocktailIngredientCosts(cocktail.cocktail_ingredients || [])) 
                         ? '0.00' 
-                        : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
+                        : sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []).toFixed(2)}
                     </Typography>
                     <Box sx={{ mt: 0.75 }}>
                       <FormControlLabel
                         control={
                           <Switch
-                            checked={cocktail.is_featured}
+                            checked={cocktail.menu_is_featured}
                             onChange={(e) => handleToggleFeatured(cocktail.id, e.target.checked)}
                           />
                         }
-                        label={cocktail.is_featured ? 'Featured' : 'Not Featured'}
+                        label={cocktail.menu_is_featured ? 'Featured' : 'Not Featured'}
                       />
                     </Box>
                   </Box>
@@ -573,19 +588,19 @@ export function CocktailsPage() {
                       ))}
                     </TableCell>
                     <TableCell>
-                      ${isNaN(calculateCocktailCost(cocktail.cocktail_ingredients || [])) 
+                      ${isNaN(sumCocktailIngredientCosts(cocktail.cocktail_ingredients || [])) 
                         ? '0.00' 
-                        : calculateCocktailCost(cocktail.cocktail_ingredients || []).toFixed(2)}
+                        : sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []).toFixed(2)}
                     </TableCell>
                     <TableCell>
                       <FormControlLabel
                         control={
                           <Switch
-                            checked={cocktail.is_featured}
+                            checked={cocktail.menu_is_featured}
                             onChange={(e) => handleToggleFeatured(cocktail.id, e.target.checked)}
                           />
                         }
-                        label={cocktail.is_featured ? 'Featured' : 'Not Featured'}
+                        label={cocktail.menu_is_featured ? 'Featured' : 'Not Featured'}
                       />
                     </TableCell>
                     <TableCell>
@@ -613,12 +628,21 @@ export function CocktailsPage() {
           </DialogTitle>
           <DialogContent>
             <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {editingCocktail &&
+                (editingCocktail.bar_id === null || editingCocktail.bar_id === undefined) &&
+                !isSuperadmin && (
+                  <Alert severity="info">
+                    This drink is in the shared catalog. You can feature it or remove it from your menu; only
+                    platform staff can edit the recipe.
+                  </Alert>
+                )}
               <TextField
                 label="Name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
                 fullWidth
+                disabled={recipeReadOnly}
               />
               <TextField
                 label="Description"
@@ -627,12 +651,14 @@ export function CocktailsPage() {
                 multiline
                 rows={3}
                 fullWidth
+                disabled={recipeReadOnly}
               />
               <TextField
                 label="Image URL"
                 value={formData.image_url}
                 onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
                 fullWidth
+                disabled={recipeReadOnly}
               />
               
               <Typography variant="h6" sx={{ mt: 2 }}>Ingredients</Typography>
@@ -648,13 +674,9 @@ export function CocktailsPage() {
                   />
                 )}
                 renderOption={(props, option) => {
-                  const pricePerUnit = calculatePricePerOunce(option.price, option.bottle_size, option.type);
-                  const unitLabel = option.type === 'bitters' ? 'dash' : 'oz';
-                  const priceDisplay = option.type === 'garnish' || (option.type === 'other' && !option.isBottled)
-                    ? `$${option.price?.toFixed(2)}/unit`
-                    : pricePerUnit !== null
-                      ? `$${pricePerUnit.toFixed(2)}/${unitLabel}`
-                      : `$${option.price?.toFixed(2)}/unit`;
+                  const ppo = option.price_per_ounce;
+                  const priceDisplay =
+                    ppo != null ? `$${ppo.toFixed(3)} / unit` : '—';
 
                   return (
                     <li {...props}>
@@ -667,6 +689,7 @@ export function CocktailsPage() {
                     </li>
                   );
                 }}
+                disabled={recipeReadOnly}
                 onChange={(_, newValue) => {
                   if (newValue) {
                     handleAddIngredient(newValue);
@@ -692,6 +715,7 @@ export function CocktailsPage() {
                     value={ing.amount}
                     onChange={(e) => handleUpdateIngredient(index, 'amount', parseFloat(e.target.value))}
                     sx={{ width: 100 }}
+                    disabled={recipeReadOnly}
                   />
                   <FormControl sx={{ width: 100 }}>
                     <InputLabel>Unit</InputLabel>
@@ -699,6 +723,7 @@ export function CocktailsPage() {
                       value={ing.unit}
                       label="Unit"
                       onChange={(e) => handleUpdateIngredient(index, 'unit', e.target.value)}
+                      disabled={recipeReadOnly}
                     >
                       <MenuItem value="oz">oz</MenuItem>
                       <MenuItem value="ml">ml</MenuItem>
@@ -706,7 +731,7 @@ export function CocktailsPage() {
                       <MenuItem value="piece">piece</MenuItem>
                     </Select>
                   </FormControl>
-                  <IconButton onClick={() => handleRemoveIngredient(index)}>
+                  <IconButton onClick={() => handleRemoveIngredient(index)} disabled={recipeReadOnly}>
                     <DeleteIcon />
                   </IconButton>
                 </Box>
@@ -715,7 +740,9 @@ export function CocktailsPage() {
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClose}>Cancel</Button>
-            <Button type="submit" variant="contained">Save</Button>
+            <Button type="submit" variant="contained" disabled={recipeReadOnly}>
+              Save
+            </Button>
           </DialogActions>
         </form>
       </Dialog>

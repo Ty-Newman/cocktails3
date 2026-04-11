@@ -15,14 +15,13 @@ export function AdminDashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
 
-  // Redirect if not admin
   useEffect(() => {
-    if (!isAdmin) {
-      navigate('/');
+    if (!user) {
+      navigate('/login');
     }
-  }, [isAdmin, navigate]);
+  }, [user, navigate]);
 
   const menuItems = [
     { text: 'Home', icon: <HomeIcon />, path: '/' },

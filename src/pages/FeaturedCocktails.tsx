@@ -17,76 +17,17 @@ import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import { getSupabaseClient } from '../services/supabase';
 import { searchCocktailByName } from '../services/cocktailDB';
 import { useCart } from '../contexts/CartContext';
-import type { Cocktail, IngredientType, BottleSize } from '../types/supabase';
+import { useBar } from '../contexts/BarContext';
+import type { Cocktail } from '../types/supabase';
 import { FavoriteButton } from '../components/FavoriteButton';
+import { sumCocktailIngredientCosts } from '../utils/cocktailCost';
+import { cocktailsFromBarMenuRows } from '../utils/barMenuQueries';
 
-// Add the bottle size to ml mapping
-const bottleSizeToMl: Record<BottleSize, number> = {
-  '50ml': 50,
-  '200ml': 200,
-  '375ml': 375,
-  '500ml': 500,
-  '750ml': 750,
-  '1L': 1000,
-  '1.75L': 1750
-};
-
-// Add the price calculation function
-const calculatePricePerOunce = (price: number | null, bottleSize: BottleSize | null, type: IngredientType): number | null => {
-  if (price === null || bottleSize === null) return null;
-  
-  if (type === 'bitters') {
-    // Average bitters bottle has about 200 dashes
-    const dashesPerBottle = 200;
-    return price / dashesPerBottle;
-  }
-  
-  const mlInBottle = bottleSizeToMl[bottleSize];
-  const mlPerOunce = 29.5735; // 1 ounce = 29.5735 ml
-  return (price * mlPerOunce) / mlInBottle;
-};
-
-// Add function to calculate cocktail cost
-const calculateCocktailCost = (ingredients: any[]): number => {
-  if (!ingredients || ingredients.length === 0) return 0;
-
-  return ingredients.reduce((total, ingredient) => {
-    if (!ingredient.ingredients || !ingredient.amount) return total;
-
-    const price = ingredient.ingredients.price;
-    if (price === null) return total;
-
-    const pricePerUnit = calculatePricePerOunce(
-      price,
-      ingredient.ingredients.bottle_size,
-      ingredient.ingredients.type
-    );
-
-    // For items without bottle size (garnishes, non-bottled items)
-    if (pricePerUnit === null) {
-      return total + (price * ingredient.amount);
-    }
-
-    // For bottled items, calculate based on amount and unit
-    const amount = ingredient.amount;
-    const unit = ingredient.unit.toLowerCase();
-    
-    if (unit === 'dash' && ingredient.ingredients.type === 'bitters') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
-      return total + (pricePerUnit * amount);
-    } else if (unit === 'ml') {
-      // Convert ml to oz for calculation
-      const mlPerOunce = 29.5735;
-      return total + (pricePerUnit * (amount / mlPerOunce));
-    }
-
-    return total;
-  }, 0);
-};
+type CocktailWithCost = Cocktail & { cost?: number };
 
 export function FeaturedCocktails() {
-  const [cocktails, setCocktails] = useState<Cocktail[]>([]);
+  const { bar } = useBar();
+  const [cocktails, setCocktails] = useState<CocktailWithCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { addToCart } = useCart();
@@ -98,7 +39,7 @@ export function FeaturedCocktails() {
     message: ''
   });
 
-  const handleAddToCart = (cocktail: Cocktail) => {
+  const handleAddToCart = (cocktail: CocktailWithCost) => {
     addToCart({
       id: cocktail.id,
       name: cocktail.name,
@@ -125,23 +66,28 @@ export function FeaturedCocktails() {
         }
 
         const { data, error } = await supabase
-          .from('cocktails')
+          .from('bar_cocktails')
           .select(`
-            *,
-            cocktail_ingredients (
-              amount,
-              unit,
-              ingredients (
+            cocktails (
+              *,
+              cocktail_ingredients (
                 id,
-                name,
-                price,
-                bottle_size,
-                type
+                amount,
+                unit,
+                ingredients (
+                  id,
+                  name,
+                  price_per_ounce,
+                  price,
+                  bottle_size,
+                  type
+                )
               )
             )
           `)
-          .eq('is_featured', true)
-          .order('name');
+          .eq('bar_id', bar!.id)
+          .eq('active', true)
+          .eq('is_featured', true);
 
         if (error) {
           throw error;
@@ -155,10 +101,13 @@ export function FeaturedCocktails() {
           return;
         }
 
+        const menu = cocktailsFromBarMenuRows(data);
+        menu.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
         // Process cocktails with images and costs
         console.log('Processing cocktails with images and costs...');
         const processedCocktails = await Promise.all(
-          data.map(async (cocktail) => {
+          menu.map(async (cocktail) => {
             try {
               console.log('Processing cocktail:', cocktail.name);
               
@@ -188,8 +137,7 @@ export function FeaturedCocktails() {
                 }
               }
 
-              // Calculate cost using the helper function
-              const cost = calculateCocktailCost(cocktail.cocktail_ingredients || []);
+              const cost = sumCocktailIngredientCosts(cocktail.cocktail_ingredients || []);
 
               return {
                 ...cocktail,
@@ -202,7 +150,7 @@ export function FeaturedCocktails() {
               return {
                 ...cocktail,
                 image_url: cocktail.image_url || null,
-                cost: calculateCocktailCost(cocktail.cocktail_ingredients || [])
+                cost: sumCocktailIngredientCosts(cocktail.cocktail_ingredients || [])
               };
             }
           })
@@ -218,8 +166,8 @@ export function FeaturedCocktails() {
       }
     };
 
-    fetchCocktails();
-  }, []);
+    void fetchCocktails();
+  }, [bar?.id]);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -313,9 +261,9 @@ export function FeaturedCocktails() {
                         borderRadius: '4px',
                       },
                     }}>
-                      {cocktail.cocktail_ingredients?.map((ci) => (
+                      {cocktail.cocktail_ingredients?.map((ci, idx) => (
                         <Chip
-                          key={ci.id}
+                          key={ci.id ?? `${cocktail.id}-${idx}`}
                           label={`${ci.amount} ${ci.unit} ${ci.ingredients?.name}`}
                           size="small"
                           variant="outlined"

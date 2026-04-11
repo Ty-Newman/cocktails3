@@ -1,4 +1,6 @@
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'user' | 'admin' | 'superadmin';
+
+export type BarMemberRole = 'owner' | 'admin' | 'staff' | 'patron';
 
 export type BottleSize = '50ml' | '200ml' | '375ml' | '500ml' | '750ml' | '1L' | '1.75L';
 
@@ -22,24 +24,30 @@ export type IngredientType =
 export interface Profile {
   id: string;
   role: UserRole;
+  bar_id: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface Cocktail {
   id: string;
+  bar_id?: string;
   name: string;
   description: string | null;
   image_url: string | null;
+  is_featured?: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export interface Ingredient {
   id: string;
+  bar_id?: string;
   name: string;
-  bottle_size: BottleSize;
-  price: number | null;
+  bottle_size: BottleSize | null;
+  price_per_ounce: number | null;
+  /** @deprecated removed from DB; optional for legacy reads */
+  price?: number | null;
   link: string | null;
   image_url: string | null;
   type: IngredientType | null;

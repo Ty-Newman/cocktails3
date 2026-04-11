@@ -10,8 +10,12 @@ begin
     raise notice 'Creating profile for user: %', new.id;
     
     -- Insert the profile
-    insert into public.profiles (id, role)
-    values (new.id, 'user');
+    insert into public.profiles (id, role, bar_id)
+    values (
+        new.id,
+        'user',
+        'a0000000-0000-4000-8000-000000000001'::uuid
+    );
     
     -- Log success
     raise notice 'Profile created successfully for user: %', new.id;
